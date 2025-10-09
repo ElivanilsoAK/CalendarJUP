@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Calendar, Users, Download, Filter, X } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { AnalyticsFilters as Filters } from '../../services/analyticsService';
+import type { AnalyticsFilters as Filters } from '../../services/analyticsService';
 
 interface AnalyticsFiltersProps {
   filters: Filters;

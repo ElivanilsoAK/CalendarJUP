@@ -234,7 +234,7 @@ export const AdvancedChart: React.FC<AdvancedChartProps> = ({
           <div className="flex items-center gap-2">
             {getTrendIcon(data[data.length - 1]?.change)}
             <span className={`text-sm font-medium ${getTrendColor(data[data.length - 1]?.change)}`}>
-              {data[data.length - 1]?.change ? `${Math.abs(data[data.length - 1].change)}%` : '0%'}
+              {data[data.length - 1]?.change ? `${Math.abs(data[data.length - 1].change || 0)}%` : '0%'}
             </span>
           </div>
         )}

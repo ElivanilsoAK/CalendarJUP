@@ -1,43 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
 import { useErrorHandler } from '../hooks/useErrorHandler';
 import { useLoading } from '../hooks/useLoading';
 import { calculateAdvancedMetrics, exportAnalyticsToCSV, type AnalyticsFilters, type AnalyticsMetrics } from '../services/analyticsService';
 import { AdvancedChart } from '../components/analytics/AdvancedChart';
 import { MetricCard } from '../components/analytics/MetricCard';
 import { AnalyticsFilters as FiltersComponent } from '../components/analytics/AnalyticsFilters';
-import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { SkeletonCard } from '../components/ui/LoadingSkeleton';
-import { Users, Calendar, Clock, TrendingUp, Download, BarChart3, PieChart, Activity } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { Users, Calendar, TrendingUp, BarChart3, Activity } from 'lucide-react';
+import { format } from 'date-fns';
 
-interface ShiftData {
-  id: string;
-  date: string;
-  plantonista: {
-    id: string;
-    name: string;
-  };
-  calendarId: string;
-}
 
 
 const Analytics = () => {
-  const { theme } = useTheme();
-  const { currentUser, currentUserOrg, userOrgs } = useAuth();
+  const { currentUser, currentUserOrg } = useAuth();
   const { handleError } = useErrorHandler();
   const dataLoading = useLoading();
   const [metrics, setMetrics] = useState<AnalyticsMetrics | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [showAllShifts, setShowAllShifts] = useState(false);
   const [filters, setFilters] = useState<AnalyticsFilters>({});
   const [collaborators, setCollaborators] = useState<Array<{ id: string; name: string }>>([]);
 
-  // Get user role to determine permissions
-  const userRole = userOrgs.find(org => org.orgId === currentUserOrg?.orgId)?.role;
-  const isAdmin = userRole === 'admin' || userRole === 'owner';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,7 +76,7 @@ const Analytics = () => {
   };
 
 
-  if (loading) {
+  if (dataLoading.isLoading) {
     return (
       <div className="max-w-7xl mx-auto p-4 sm:p-8">
         <div className="animate-pulse">

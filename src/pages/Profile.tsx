@@ -1,13 +1,13 @@
-import React, { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
 import AvatarUpload from '../components/AvatarUpload';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { Lock, Building, Upload, CheckCircle, AlertCircle, Users, Plus, ArrowRight, LogOut, Trash2 } from 'lucide-react';
+import { Lock, Building, CheckCircle, AlertCircle, Users, Plus, ArrowRight, LogOut, Trash2 } from 'lucide-react';
 
 const Profile = () => {
-  const { currentUser, createOrganization, currentUserOrg, userOrgs, switchOrg, leaveOrganization, deleteOrganization } = useAuth();
-  const { success, error } = useToastContext();
+  const auth = useAuth();
+  useToastContext();
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
 
   // Password State
@@ -37,13 +37,13 @@ const Profile = () => {
       setPasswordError('As novas senhas não correspondem.');
       return;
     }
-    if (!currentUser?.email) return;
+    if (!auth.currentUser?.email) return;
 
     setPasswordLoading(true);
     try {
-      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
-      await reauthenticateWithCredential(currentUser, credential);
-      await updatePassword(currentUser, newPassword);
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await updatePassword(auth.currentUser, newPassword);
       setPasswordSuccess('Senha alterada com sucesso!');
       setCurrentPassword('');
       setNewPassword('');
@@ -66,7 +66,7 @@ const Profile = () => {
     }
     setOrgLoading(true);
     try {
-      await createOrganization(orgName);
+      await auth.createOrganization(orgName);
       setOrgSuccess(`Organização "${orgName}" criada com sucesso!`);
       setOrgName('');
     } catch (error) {
@@ -82,7 +82,7 @@ const Profile = () => {
       return;
     }
     try {
-      await leaveOrganization(orgId);
+      await auth.leaveOrganization(orgId);
       setOrgSuccess(`Você saiu da organização "${orgName}" com sucesso!`);
     } catch (error) {
       setOrgError('Falha ao sair da organização.');
@@ -95,7 +95,7 @@ const Profile = () => {
       return;
     }
     try {
-      await deleteOrganization(orgId);
+      await auth.deleteOrganization(orgId);
       setOrgSuccess(`Organização "${orgName}" foi excluída com sucesso!`);
     } catch (error) {
       setOrgError(error instanceof Error ? error.message : 'Falha ao excluir organização.');
@@ -111,18 +111,18 @@ const Profile = () => {
         <div className="md:col-span-1 flex flex-col items-center text-center">
           <div className="mb-4">
             <AvatarUpload
-              currentAvatar={currentUser?.photoURL || avatarUrl}
-              userId={currentUser?.uid || ''}
-              userName={currentUser?.displayName || currentUser?.email || ''}
-              organizationId={currentUserOrg?.orgId}
+              currentAvatar={auth.currentUser?.photoURL || avatarUrl}
+              userId={auth.currentUser?.uid || ''}
+              userName={auth.currentUser?.displayName || auth.currentUser?.email || ''}
+              organizationId={auth.currentUserOrg?.orgId}
               isUserProfile={true}
               onAvatarUpdated={handleAvatarUpdated}
               size="xl"
               showUploadButton={false}
             />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{currentUser?.displayName}</h2>
-          <p className="text-md text-gray-500 dark:text-gray-400">{currentUser?.email}</p>
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{auth.currentUser?.displayName}</h2>
+          <p className="text-md text-gray-500 dark:text-gray-400">{auth.currentUser?.email}</p>
         </div>
 
         <div className="md:col-span-2 space-y-8">
@@ -142,7 +142,7 @@ const Profile = () => {
             <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-6 flex items-center"><Building className="mr-3"/>Gerenciar Organizações</h3>
             
             {/* Current Organization */}
-            {currentUserOrg && (
+            {auth.currentUserOrg && (
               <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                 <div className="flex items-center justify-between">
                   <div>
@@ -150,13 +150,13 @@ const Profile = () => {
                       <Users className="mr-2" size={16} />
                       Organização Atual
                     </h4>
-                    <p className="text-green-600 dark:text-green-300 font-medium">{currentUserOrg.name}</p>
-                    <p className="text-sm text-green-500 dark:text-green-400">Código: {currentUserOrg.code}</p>
+                    <p className="text-green-600 dark:text-green-300 font-medium">{auth.currentUserOrg.name}</p>
+                    <p className="text-sm text-green-500 dark:text-green-400">Código: {auth.currentUserOrg.code}</p>
                   </div>
                   <div className="text-right">
                     <span className="px-2 py-1 bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-200 text-xs font-semibold rounded-full">
-                      {currentUserOrg.role === 'owner' ? 'Proprietário' : 
-                       currentUserOrg.role === 'admin' ? 'Administrador' : 'Membro'}
+                      {auth.currentUserOrg.role === 'owner' ? 'Proprietário' : 
+                       auth.currentUserOrg.role === 'admin' ? 'Administrador' : 'Membro'}
                     </span>
                   </div>
                 </div>
@@ -164,11 +164,11 @@ const Profile = () => {
             )}
 
             {/* Organization List */}
-            {userOrgs.length > 1 && (
+            {auth.userOrgs.length > 1 && (
               <div className="mb-6">
                 <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Outras Organizações</h4>
                 <div className="space-y-2">
-                  {userOrgs.filter(org => org.orgId !== currentUserOrg?.orgId).map((org) => (
+                  {auth.userOrgs.filter(org => org.orgId !== auth.currentUserOrg?.orgId).map((org) => (
                     <div key={org.orgId} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                       <div>
                         <p className="font-medium text-gray-800 dark:text-gray-200">{org.name}</p>
@@ -176,7 +176,7 @@ const Profile = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => switchOrg(org.orgId)}
+                          onClick={() => auth.switchOrg(org.orgId)}
                           className="flex items-center gap-2 px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors text-sm"
                         >
                           <ArrowRight size={14} />
@@ -197,20 +197,20 @@ const Profile = () => {
             )}
 
             {/* Current Organization Actions */}
-            {currentUserOrg && (
+            {auth.currentUserOrg && (
               <div className="mb-6">
                 <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Ações da Organização Atual</h4>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleLeaveOrg(currentUserOrg.orgId, currentUserOrg.name)}
+                    onClick={() => handleLeaveOrg(auth.currentUserOrg!.orgId, auth.currentUserOrg!.name)}
                     className="flex items-center gap-2 px-4 py-2 bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-800 transition-colors text-sm"
                   >
                     <LogOut size={16} />
                     Sair da Organização
                   </button>
-                  {currentUserOrg.role === 'owner' && (
+                  {auth.currentUserOrg.role === 'owner' && (
                     <button
-                      onClick={() => handleDeleteOrg(currentUserOrg.orgId, currentUserOrg.name)}
+                      onClick={() => handleDeleteOrg(auth.currentUserOrg!.orgId, auth.currentUserOrg!.name)}
                       className="flex items-center gap-2 px-4 py-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition-colors text-sm"
                     >
                       <Trash2 size={16} />

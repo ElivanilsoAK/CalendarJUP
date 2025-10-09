@@ -2,12 +2,12 @@
 import React from 'react';
 import { 
   BarChart3, 
-  PieChart, 
   TrendingUp, 
   Calendar,
   Users,
   Clock,
-  Activity
+  Activity,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import type { GroupedReportData, ReportSummary } from '../../services/reportService';
 import { format, parseISO } from 'date-fns';
@@ -127,7 +127,7 @@ export const ReportCharts: React.FC<ReportChartsProps> = ({
   const PieChart = () => (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6">
       <div className="flex items-center gap-2 mb-6">
-        <PieChart className="w-5 h-5 text-green-500" />
+        <PieChartIcon className="w-5 h-5 text-green-500" />
         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
           Distribuição Geral
         </h3>

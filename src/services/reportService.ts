@@ -5,10 +5,7 @@ import {
   getDocs, 
   query, 
   where, 
-  orderBy,
-  startAt,
-  endAt,
-  limit 
+  orderBy
 } from 'firebase/firestore';
 import { 
   startOfMonth, 
@@ -18,9 +15,6 @@ import {
   isWithinInterval, 
   parseISO,
   format,
-  eachMonthOfInterval,
-  eachDayOfInterval,
-  addDays,
   subDays
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -388,8 +382,7 @@ export const groupReportData = (
  */
 export const exportReportToCSV = (
   data: ReportData[],
-  summary: ReportSummary,
-  filters: ReportFilter
+  summary: ReportSummary
 ): string => {
   const headers = [
     'Tipo',

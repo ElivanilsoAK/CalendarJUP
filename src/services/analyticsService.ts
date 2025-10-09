@@ -1,6 +1,6 @@
 // src/services/analyticsService.ts
 import { db } from '../firebase/config';
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { 
   startOfMonth, 
   endOfMonth, 
@@ -10,7 +10,6 @@ import {
   parseISO, 
   format,
   differenceInDays,
-  addMonths,
   subMonths,
   eachMonthOfInterval,
   eachDayOfInterval
@@ -154,7 +153,6 @@ export const calculateAdvancedMetrics = async (
     const now = new Date();
     const thisMonth = startOfMonth(now);
     const lastMonth = startOfMonth(subMonths(now, 1));
-    const thisYear = startOfYear(now);
 
     // Filtrar dados se necessário
     let filteredShifts = shiftData;

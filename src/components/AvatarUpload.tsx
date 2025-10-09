@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { uploadAvatar, uploadAvatarWithProgress, type AvatarUploadOptions } from '../services/avatarService';
 import { useToastContext } from '../contexts/ToastContext';
-import { Upload, X, Check, Camera } from 'lucide-react';
+import { Upload, X, Camera } from 'lucide-react';
 
 interface AvatarUploadProps {
   currentAvatar?: string;

@@ -6,7 +6,6 @@ import { useLoading } from '../hooks/useLoading';
 import { 
   generateReport, 
   exportReportToCSV, 
-  getReportTemplates,
   type ReportFilter,
   type ReportData,
   type ReportSummary,
@@ -15,12 +14,10 @@ import {
 import { ReportFilters } from '../components/reports/ReportFilters';
 import { ReportTable } from '../components/reports/ReportTable';
 import { ReportCharts } from '../components/reports/ReportCharts';
-import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { SkeletonCard } from '../components/ui/LoadingSkeleton';
 import { LoadingOverlay } from '../components/ui/LoadingOverlay';
 import { 
   FileText, 
-  Download, 
   BarChart3, 
   Table, 
   Settings,
@@ -32,7 +29,7 @@ import { Button } from '../components/ui/Button';
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 const Reports: React.FC = () => {
-  const { currentUser, currentUserOrg, userOrgs } = useAuth();
+  const { currentUserOrg } = useAuth();
   const { handleError } = useErrorHandler();
   const reportLoading = useLoading();
   const exportLoading = useLoading();
@@ -56,9 +53,6 @@ const Reports: React.FC = () => {
   const [viewMode, setViewMode] = useState<'table' | 'charts' | 'both'>('both');
   const [showFilters, setShowFilters] = useState(true);
 
-  // Get user role to determine permissions
-  const userRole = userOrgs.find(org => org.orgId === currentUserOrg?.orgId)?.role;
-  const isAdmin = userRole === 'admin' || userRole === 'owner';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -139,7 +133,7 @@ const Reports: React.FC = () => {
     
     exportLoading.startLoading('Exportando relatório...');
     try {
-      const csvContent = exportReportToCSV(reportData, reportSummary, filters);
+      const csvContent = exportReportToCSV(reportData, reportSummary);
       
       // Criar e baixar arquivo
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

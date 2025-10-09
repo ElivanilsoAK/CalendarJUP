@@ -6,11 +6,12 @@ import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import AvatarUpload from './AvatarUpload';
 import { updateUserRole } from '../services/userService';
 import { logCollaboratorUpdated } from '../firebase/analytics';
-import { X, Upload, User, Calendar } from 'lucide-react';
+import { X, User, Calendar } from 'lucide-react';
 
 interface Collaborator {
     id: string;
     email: string;
+    name?: string;
     age?: number;
     avatarUrl?: string;
     role?: 'owner' | 'admin' | 'member';
@@ -26,10 +27,11 @@ interface EditProfileModalProps {
 
 const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, onProfileUpdate, collaborator, isAdmin }) => {
     const { currentUser, currentUserOrg } = useAuth();
-    const { success, error, warning } = useToastContext();
+    const { success, error } = useToastContext();
     const [age, setAge] = useState('');
     const [role, setRole] = useState<'owner' | 'admin' | 'member'>('member');
     const [currentAvatar, setCurrentAvatar] = useState<string | undefined>(undefined);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -59,6 +61,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
         const uid = collaborator?.id || currentUser?.uid;
         if (!uid) return;
 
+        setIsUploading(true);
         try {
             const userRef = doc(db, 'users', uid);
             const updatedData: Partial<Collaborator> = {
@@ -85,6 +88,8 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
         } catch (err) {
             console.error('Erro ao atualizar perfil:', err);
             error('Erro ao atualizar perfil', 'Tente novamente mais tarde.');
+        } finally {
+            setIsUploading(false);
         }
     };
 

@@ -1,6 +1,5 @@
 // src/hooks/useErrorHandler.ts
 import { useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
 import { 
   handleError,

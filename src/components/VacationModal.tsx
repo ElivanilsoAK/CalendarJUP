@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
 import { useFormValidation } from '../hooks/useValidation';
-import { formValidations } from '../services/validationService';
 import ValidatedInput from './forms/ValidatedInput';
 import ValidatedTextarea from './forms/ValidatedTextarea';
 import { 
@@ -20,7 +19,7 @@ import {
   notifyVacationRejected,
   getAdminIds
 } from '../services/notificationService';
-import { format, parseISO, isBefore } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar, Plus, X, Check, XCircle, Clock } from 'lucide-react';
 
@@ -35,7 +34,7 @@ interface VacationModalProps {
 
 const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collaborator }) => {
   const { currentUser, currentUserOrg } = useAuth();
-  const { success, error, warning } = useToastContext();
+  const { success, error } = useToastContext();
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [loading, setLoading] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -317,7 +316,7 @@ const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collabor
                     <button
                       onClick={() => {
                         setShowRequestForm(false);
-                        setNewVacation({ startDate: '', endDate: '', reason: '' });
+                        vacationValidation.resetAll();
                       }}
                       className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg"
                     >

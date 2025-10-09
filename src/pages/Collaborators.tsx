@@ -30,8 +30,8 @@ const RoleBadge: React.FC<{ role?: 'owner' | 'admin' | 'member' }> = ({ role }) 
 
 const Collaborators = () => {
     const { currentUser, currentUserOrg } = useAuth();
-    const { error } = useToastContext();
-    const { handleError, withErrorHandling } = useErrorHandler();
+    useToastContext();
+    const { handleError } = useErrorHandler();
     const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
     const [loading, setLoading] = useState(true);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);

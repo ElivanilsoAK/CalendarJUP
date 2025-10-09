@@ -1,6 +1,6 @@
 // src/components/reports/ReportFilters.tsx
 import React, { useState } from 'react';
-import { Calendar, Users, Filter, Download, Save, Plus, X } from 'lucide-react';
+import { Users, Filter, Download, Save, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import ValidatedInput from '../forms/ValidatedInput';
 import ValidatedSelect from '../forms/ValidatedSelect';
@@ -239,7 +239,7 @@ export const ReportFilters: React.FC<ReportFiltersProps> = ({
                     <input
                       type="checkbox"
                       checked={filters.userIds?.includes(collaborator.id) || false}
-                      onChange={() => handleMultiSelectChange('userIds', collaborator.id)}
+                      onChange={() => handleMultiSelectChange('userIds', collaborator.id || '')}
                       className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -293,8 +293,8 @@ export const ReportFilters: React.FC<ReportFiltersProps> = ({
                     <label key={department} className="flex items-center">
                       <input
                         type="checkbox"
-                        checked={filters.departments?.includes(department) || false}
-                        onChange={() => handleMultiSelectChange('departments', department)}
+                        checked={filters.departments?.includes(department || '') || false}
+                        onChange={() => handleMultiSelectChange('departments', department || '')}
                         className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="text-sm text-gray-700 dark:text-gray-300">
