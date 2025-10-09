@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
-import { db, storage } from '../firebase/config';
+import { db } from '../firebase/config';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import AvatarUpload from './AvatarUpload';
 import { updateUserRole } from '../services/userService';
 import { logCollaboratorUpdated } from '../firebase/analytics';
 import { X, Upload, User, Calendar } from 'lucide-react';
@@ -25,12 +25,10 @@ interface EditProfileModalProps {
 }
 
 const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, onProfileUpdate, collaborator, isAdmin }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, currentUserOrg } = useAuth();
     const { success, error, warning } = useToastContext();
     const [age, setAge] = useState('');
-    const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [role, setRole] = useState<'owner' | 'admin' | 'member'>('member');
-    const [isUploading, setIsUploading] = useState(false);
     const [currentAvatar, setCurrentAvatar] = useState<string | undefined>(undefined);
 
     useEffect(() => {
@@ -52,49 +50,20 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
         }
     }, [isOpen, currentUser, collaborator]);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            
-            // Validar tipo de arquivo
-            if (!file.type.startsWith('image/')) {
-                warning('Tipo de arquivo inválido', 'Por favor, selecione apenas imagens.');
-                return;
-            }
-            
-            // Validar tamanho (max 5MB)
-            if (file.size > 5 * 1024 * 1024) {
-                warning('Arquivo muito grande', 'Por favor, selecione uma imagem menor que 5MB.');
-                return;
-            }
-            
-            setAvatarFile(file);
-        }
+    const handleAvatarUpdated = (newAvatarUrl: string) => {
+        setCurrentAvatar(newAvatarUrl);
+        onProfileUpdate({ avatarUrl: newAvatarUrl });
     };
 
     const handleSave = async () => {
         const uid = collaborator?.id || currentUser?.uid;
         if (!uid) return;
 
-        let avatarUrl = currentAvatar;
-        setIsUploading(true);
-
         try {
-            if (avatarFile) {
-                // Upload do avatar
-                const timestamp = Date.now();
-                const fileName = `avatar_${timestamp}_${avatarFile.name}`;
-                const storageRef = ref(storage, `users/${uid}/avatars/${fileName}`);
-                const uploadTask = uploadBytesResumable(storageRef, avatarFile);
-                
-                await uploadTask;
-                avatarUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            }
-
             const userRef = doc(db, 'users', uid);
             const updatedData: Partial<Collaborator> = {
                 age: age ? Number(age) : undefined,
-                avatarUrl: avatarUrl,
+                avatarUrl: currentAvatar,
             };
 
             if (isAdmin && collaborator && collaborator.role !== role) {
@@ -102,11 +71,12 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
                 updatedData.role = role;
             }
 
-            await updateDoc(userRef, { 
-                age: updatedData.age, 
-                avatarUrl: updatedData.avatarUrl,
-                updatedAt: new Date()
-            });
+            // Atualizar apenas os campos que mudaram
+            const updateFields: any = { updatedAt: new Date() };
+            if (age) updateFields.age = Number(age);
+            if (currentAvatar) updateFields.avatarUrl = currentAvatar;
+
+            await updateDoc(userRef, updateFields);
 
             logCollaboratorUpdated(uid);
             onProfileUpdate(updatedData);
@@ -115,8 +85,6 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
         } catch (err) {
             console.error('Erro ao atualizar perfil:', err);
             error('Erro ao atualizar perfil', 'Tente novamente mais tarde.');
-        } finally {
-            setIsUploading(false);
         }
     };
 
@@ -148,45 +116,16 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                             Avatar
                         </label>
-                        <div className="flex items-center space-x-4">
-                            <div className="relative">
-                                {currentAvatar ? (
-                                    <img 
-                                        src={currentAvatar} 
-                                        alt="Avatar atual" 
-                                        className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600"
-                                    />
-                                ) : (
-                                    <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
-                                        <User size={32} className="text-gray-400" />
-                                    </div>
-                                )}
-                                {avatarFile && (
-                                    <div className="absolute -bottom-1 -right-1 bg-green-500 rounded-full p-1">
-                                        <Upload size={12} className="text-white" />
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex-1">
-                                <input 
-                                    type="file" 
-                                    onChange={handleFileChange}
-                                    className="hidden"
-                                    accept="image/*"
-                                    id="avatar-upload"
-                                />
-                                <label
-                                    htmlFor="avatar-upload"
-                                    className="cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
-                                >
-                                    <Upload size={16} className="mr-2" />
-                                    {avatarFile ? 'Trocar Avatar' : 'Escolher Avatar'}
-                                </label>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    PNG, JPG ou GIF (máx. 5MB)
-                                </p>
-                            </div>
-                        </div>
+                        <AvatarUpload
+                            currentAvatar={currentAvatar}
+                            userId={collaborator?.id || currentUser?.uid || ''}
+                            userName={collaborator?.name || currentUser?.displayName || currentUser?.email || ''}
+                            organizationId={currentUserOrg?.orgId}
+                            isUserProfile={collaborator?.id === currentUser?.uid}
+                            onAvatarUpdated={handleAvatarUpdated}
+                            size="md"
+                            showUploadButton={true}
+                        />
                     </div>
 
                     {/* Age Section */}

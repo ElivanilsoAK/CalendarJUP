@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useLoading } from '../hooks/useLoading';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { LoadingSkeleton, SkeletonCard, SkeletonList } from '../components/ui/LoadingSkeleton';
+import { LoadingOverlay, LoadingButton } from '../components/ui/LoadingOverlay';
 import { collection, query, orderBy, getDocs, doc, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Calendar, Users, Plus, ArrowRight, Building, KeyRound } from 'lucide-react';
@@ -21,13 +25,15 @@ const Dashboard = () => {
   const { currentUser, currentUserOrg, refreshAuthContext, createOrganization } = useAuth();
   const navigate = useNavigate();
   const [calendars, setCalendars] = useState<Calendar[]>([]);
-  const [loadingCalendars, setLoadingCalendars] = useState(true);
   const [stats, setStats] = useState({ collaborators: 0, calendars: 0 });
+
+  // Loading states
+  const dataLoading = useLoading();
+  const orgProcessing = useLoading();
 
   // State for joining/creating an org
   const [joinCode, setJoinCode] = useState('');
   const [newOrgName, setNewOrgName] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
 
 
@@ -35,7 +41,7 @@ const Dashboard = () => {
     const fetchData = async () => {
         if (!currentUserOrg) return;
         
-        setLoadingCalendars(true);
+        dataLoading.startLoading('Carregando dados...');
         // Fetch calendars
         try {
             const calendarsRef = collection(db, 'organizations', currentUserOrg.orgId, 'calendars');
@@ -54,16 +60,17 @@ const Dashboard = () => {
 
         } catch (error) {
             console.error("Error fetching data: ", error);
+            dataLoading.setError('Erro ao carregar dados');
         } finally {
-            setLoadingCalendars(false);
+            dataLoading.stopLoading();
         }
     };
     fetchData();
-  }, [currentUserOrg]);
+  }, [currentUserOrg, dataLoading]);
 
   const handleJoinOrganization = async () => {
     if (!joinCode.trim() || !currentUser) return;
-    setIsProcessing(true);
+    orgProcessing.startLoading('Entrando na organização...');
     setError('');
     try {
       const org = await findOrganizationByInviteCode(joinCode.toUpperCase());
@@ -109,22 +116,24 @@ const Dashboard = () => {
       setJoinCode(''); // Clear the input
     } catch (err: any) {
       setError(err.message);
+      orgProcessing.setError(err.message);
     } finally {
-      setIsProcessing(false);
+      orgProcessing.stopLoading();
     }
   };
 
   const handleCreateOrganization = async () => {
     if (!newOrgName.trim() || !currentUser) return;
-    setIsProcessing(true);
+    orgProcessing.startLoading('Criando organização...');
     setError('');
     try {
       await createOrganization(newOrgName);
       setNewOrgName(''); // Clear the input
     } catch (err: any) {
       setError(err.message || 'Falha ao criar organização.');
+      orgProcessing.setError(err.message || 'Falha ao criar organização.');
     } finally {
-      setIsProcessing(false);
+      orgProcessing.stopLoading();
     }
   };
 
@@ -151,13 +160,16 @@ const Dashboard = () => {
                                 onChange={(e) => setJoinCode(e.target.value)}
                                 className="w-full px-4 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg font-mono uppercase"
                             />
-                            <button
+                            <LoadingButton
                                 onClick={handleJoinOrganization}
-                                disabled={isProcessing || !joinCode}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50"
+                                loading={orgProcessing.isLoading}
+                                loadingText="Entrando..."
+                                disabled={!joinCode}
+                                variant="primary"
+                                className="w-full"
                             >
-                                {isProcessing ? 'Entrando...' : 'Entrar'}
-                            </button>
+                                Entrar
+                            </LoadingButton>
                         </div>
                     </div>
 
@@ -176,13 +188,16 @@ const Dashboard = () => {
                                 onChange={(e) => setNewOrgName(e.target.value)}
                                 className="w-full px-4 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg"
                             />
-                            <button
+                            <LoadingButton
                                 onClick={handleCreateOrganization}
-                                disabled={isProcessing || !newOrgName}
-                                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50"
+                                loading={orgProcessing.isLoading}
+                                loadingText="Criando..."
+                                disabled={!newOrgName}
+                                variant="secondary"
+                                className="w-full"
                             >
-                                {isProcessing ? 'Criando...' : 'Criar Organização'}
-                            </button>
+                                Criar Organização
+                            </LoadingButton>
                         </div>
                     </div>
                 </div>
@@ -201,32 +216,41 @@ const Dashboard = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm flex items-center space-x-4">
-            <div className="bg-yellow-100 dark:bg-yellow-500/20 p-3 rounded-full">
-                <Users className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+        {dataLoading.isLoading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : (
+          <>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm flex items-center space-x-4">
+                <div className="bg-yellow-100 dark:bg-yellow-500/20 p-3 rounded-full">
+                    <Users className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Colaboradores</p>
+                    <p className="text-2xl font-bold">{stats.collaborators}</p>
+                </div>
             </div>
-            <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Colaboradores</p>
-                <p className="text-2xl font-bold">{stats.collaborators}</p>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm flex items-center space-x-4">
+                <div className="bg-green-100 dark:bg-green-500/20 p-3 rounded-full">
+                    <Calendar className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Calendários Criados</p>
+                    <p className="text-2xl font-bold">{stats.calendars}</p>
+                </div>
             </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm flex items-center space-x-4">
-            <div className="bg-green-100 dark:bg-green-500/20 p-3 rounded-full">
-                <Calendar className="w-6 h-6 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Calendários Criados</p>
-                <p className="text-2xl font-bold">{stats.calendars}</p>
-            </div>
-        </div>
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content: Saved Calendars */}
         <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm">
             <h2 className="text-xl font-semibold mb-4">Meus Calendários</h2>
-            {loadingCalendars ? (
-                <p className="text-gray-500 dark:text-gray-400">Carregando calendários...</p>
+            {dataLoading.isLoading ? (
+                <SkeletonList items={3} />
             ) : calendars.length > 0 ? (
                 <div className="space-y-3">
                     {calendars.map(cal => (
@@ -291,11 +315,11 @@ const Dashboard = () => {
                     />
                     <button
                         onClick={handleCreateOrganization}
-                        disabled={isProcessing || !newOrgName}
+                        disabled={orgProcessing.isLoading || !newOrgName}
                         className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 flex items-center justify-center space-x-2"
                     >
                         <Plus size={18} />
-                        <span>{isProcessing ? 'Criando...' : 'Criar Organização'}</span>
+                        <span>{orgProcessing.isLoading ? 'Criando...' : 'Criar Organização'}</span>
                     </button>
                 </div>
                 {error && <p className="mt-2 text-red-500 text-sm">{error}</p>}

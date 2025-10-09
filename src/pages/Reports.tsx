@@ -1,483 +1,447 @@
+// src/pages/Reports.tsx
 import React, { useState, useEffect } from 'react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { format } from 'date-fns';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import type { Collaborator } from '../types/collaborator';
-
-type ReportType = 'plantoes' | 'horas' | 'feriados';
-
-interface ReportFilters {
-  startDate: string;
-  endDate: string;
-  collaboratorId?: string;
-  reportType: ReportType;
-}
+import { useErrorHandler } from '../hooks/useErrorHandler';
+import { useLoading } from '../hooks/useLoading';
+import { 
+  generateReport, 
+  exportReportToCSV, 
+  getReportTemplates,
+  type ReportFilter,
+  type ReportData,
+  type ReportSummary,
+  type GroupedReportData
+} from '../services/reportService';
+import { ReportFilters } from '../components/reports/ReportFilters';
+import { ReportTable } from '../components/reports/ReportTable';
+import { ReportCharts } from '../components/reports/ReportCharts';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { SkeletonCard } from '../components/ui/LoadingSkeleton';
+import { LoadingOverlay } from '../components/ui/LoadingOverlay';
+import { 
+  FileText, 
+  Download, 
+  BarChart3, 
+  Table, 
+  Settings,
+  Calendar,
+  Users,
+  TrendingUp
+} from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 const Reports: React.FC = () => {
-  const { currentUser } = useAuth();
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [loading, setLoading] = useState(true);
-    const [reportData, setReportData] = useState<any[]>([]);
-    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [filters, setFilters] = useState<ReportFilters>({
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
-    reportType: 'plantoes'
+  const { currentUser, currentUserOrg, userOrgs } = useAuth();
+  const { handleError } = useErrorHandler();
+  const reportLoading = useLoading();
+  const exportLoading = useLoading();
+
+  // Estados dos dados
+  const [reportData, setReportData] = useState<ReportData[]>([]);
+  const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
+  const [groupedData, setGroupedData] = useState<GroupedReportData[]>([]);
+  const [collaborators, setCollaborators] = useState<Array<{ id: string; name: string; department?: string }>>([]);
+
+  // Estados da interface
+  const [filters, setFilters] = useState<ReportFilter>({
+    startDate: startOfMonth(new Date()),
+    endDate: endOfMonth(new Date()),
+    groupBy: 'day',
+    sortBy: 'date',
+    sortOrder: 'asc',
+    includeVacations: true
   });
 
+  const [viewMode, setViewMode] = useState<'table' | 'charts' | 'both'>('both');
+  const [showFilters, setShowFilters] = useState(true);
+
+  // Get user role to determine permissions
+  const userRole = userOrgs.find(org => org.orgId === currentUserOrg?.orgId)?.role;
+  const isAdmin = userRole === 'admin' || userRole === 'owner';
+
   useEffect(() => {
-    const fetchCollaborators = async () => {
+    const fetchData = async () => {
+      if (!currentUserOrg) return;
+      
       try {
-        if (!currentUser) return;
+        // Buscar colaboradores
+        const collaboratorsData = await fetchCollaborators();
+        setCollaborators(collaboratorsData);
         
-        // Buscar organizações do usuário
-        const userDoc = await getDocs(query(collection(db, "users"), where("uid", "==", currentUser.uid)));
-        const userData = userDoc.docs[0]?.data();
-        if (!userData?.organizations || userData.organizations.length === 0) return;
-        
-        const orgId = userData.organizations[0]; // Usar a primeira organização
-        
-        // Buscar membros da organização
-        const membersRef = collection(db, 'organizations', orgId, 'members');
-        const membersSnapshot = await getDocs(membersRef);
-        const collaboratorsList: Collaborator[] = [];
-        
-        for (const memberDoc of membersSnapshot.docs) {
-          const memberData = memberDoc.data();
-          
-          // Para evitar problemas de permissão, usar dados básicos do membro
-          let userName = 'Usuário sem nome';
-          let userAvatar = '';
-          let userDepartment = '';
-          
-          try {
-            // Tentar buscar dados do usuário apenas se for o usuário atual
-            if (memberDoc.id === currentUser?.uid) {
-              const userDocRef = doc(db, 'users', memberDoc.id);
-              const userDoc = await getDoc(userDocRef);
-              if (userDoc.exists()) {
-                const userData = userDoc.data();
-                userName = userData.displayName || userData.name || 'Usuário sem nome';
-                userAvatar = userData.avatar || '';
-                userDepartment = userData.department || '';
-              }
-            } else {
-              // Para outros usuários, usar email como nome
-              userName = memberData.email.split('@')[0];
-            }
-          } catch (error) {
-            console.warn(`Could not fetch user data for ${memberDoc.id}:`, error);
-            userName = memberData.email.split('@')[0];
-          }
-          
-          collaboratorsList.push({
-            id: memberDoc.id,
-            name: userName,
-            email: memberData.email,
-            role: memberData.role,
-            avatar: userAvatar,
-            department: userDepartment
-          });
-        }
-        
-        setCollaborators(collaboratorsList);
+        // Gerar relatório inicial
+        await generateReportData();
       } catch (error) {
-        console.error("Erro ao carregar colaboradores:", error);
-      } finally {
-        setLoading(false);
+        await handleError(error, { 
+          context: 'reports_fetchData',
+          showToast: true 
+        });
       }
     };
-    
-    fetchCollaborators();
-    }, [currentUser?.uid]);
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    fetchData();
+  }, [currentUserOrg]);
+
+  useEffect(() => {
+    if (currentUserOrg && filters) {
+      generateReportData();
+    }
+  }, [filters, currentUserOrg]);
+
+  const fetchCollaborators = async (): Promise<Array<{ id: string; name: string; department?: string }>> => {
+    if (!currentUserOrg) return [];
+    
+    try {
+      const { collection, getDocs } = await import('firebase/firestore');
+      const { db } = await import('../firebase/config');
+      
+      const membersRef = collection(db, 'organizations', currentUserOrg.orgId, 'members');
+      const snapshot = await getDocs(membersRef);
+      
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name || doc.data().email,
+        department: doc.data().department
+      }));
+    } catch (error) {
+      console.error('Erro ao buscar colaboradores:', error);
+      return [];
+    }
   };
 
-  const handleGenerateReport = () => {
-    const generateReport = async () => {
-      setIsGeneratingReport(true);
-      try {
-        if (!currentUser) throw new Error('Usuário não encontrado');
-        
-        // Buscar organizações do usuário
-        const userDoc = await getDocs(query(collection(db, "users"), where("uid", "==", currentUser.uid)));
-        const userData = userDoc.docs[0]?.data();
-        if (!userData?.organizations || userData.organizations.length === 0) {
-          throw new Error('Organização não encontrada');
-        }
-
-        const orgId = userData.organizations[0]; // Usar a primeira organização
-
-        // Buscar todos os calendários da organização no período
-        const calendarsRef = collection(db, 'organizations', orgId, 'calendars');
-        const calendarsSnapshot = await getDocs(calendarsRef);
-        let allDays: any[] = [];
-        
-        calendarsSnapshot.forEach(docSnap => {
-          const data = docSnap.data();
-          if (data && data.calendarData) {
-            allDays = allDays.concat(data.calendarData.map((d: any) => ({
-              ...d,
-              year: data.year,
-              month: data.month,
-              companyName: data.companyName
-            })));
-          }
-        });
-
-        // Filtrar por período
-        const start = new Date(filters.startDate);
-        const end = new Date(filters.endDate);
-        let filtered = allDays.filter(day => {
-          const date = new Date(day.date);
-          return date >= start && date <= end;
-        });
-
-        // Filtrar por colaborador
-        if (filters.collaboratorId) {
-          const collaborator = collaborators.find(c => c.id === filters.collaboratorId);
-          filtered = filtered.filter(day => {
-            return day.plantonista === (collaborator?.name || '');
-          });
-        }
-
-        // Montar dados para tabela baseado no tipo de relatório
-        let reportRows: any[] = [];
-        
-        if (filters.reportType === 'plantoes') {
-          reportRows = filtered.map(day => ({
-            data: day.date,
-            colaborador: day.plantonista || '-',
-            tipo: 'Plantão',
-            horas: 12
-          }));
-        } else if (filters.reportType === 'horas') {
-          // Agrupar por colaborador e somar horas
-          const hoursByCollaborator = new Map();
-          filtered.forEach(day => {
-            if (day.plantonista) {
-              const current = hoursByCollaborator.get(day.plantonista) || 0;
-              hoursByCollaborator.set(day.plantonista, current + 12);
-            }
-          });
-          
-          reportRows = Array.from(hoursByCollaborator.entries()).map(([collaboratorName, hours]) => ({
-            colaborador: collaboratorName,
-            totalHoras: hours,
-            tipo: 'Total'
-          }));
-        } else if (filters.reportType === 'feriados') {
-          // Buscar feriados no período
-          const holidaysRef = collection(db, 'organizations', orgId, 'holidays');
-          const holidaysSnapshot = await getDocs(holidaysRef);
-          
-          reportRows = holidaysSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter((holiday: any) => {
-              const holidayDate = new Date(holiday.date);
-              return holidayDate >= start && holidayDate <= end;
-            })
-            .map((holiday: any) => ({
-              data: holiday.date,
-              nome: holiday.name,
-              tipo: holiday.type === 'national' ? 'Nacional' : 'Customizado'
-            }));
-        }
-
-        setReportData(reportRows);
+  const generateReportData = async () => {
+    if (!currentUserOrg) return;
+    
+    reportLoading.startLoading('Gerando relatório...');
+    try {
+      const result = await generateReport(currentUserOrg.orgId, filters);
+      
+      setReportData(result.data);
+      setReportSummary(result.summary);
+      setGroupedData(result.grouped);
       } catch (error) {
-        console.error('Erro ao gerar relatório:', error);
-        setReportData([]);
+      await handleError(error, { 
+        context: 'reports_generate',
+        showToast: true 
+      });
+      reportLoading.setError('Erro ao gerar relatório');
       } finally {
-        setIsGeneratingReport(false);
-      }
-    };
-    generateReport();
+      reportLoading.stopLoading();
+    }
   };
 
-  const handleExportPDF = () => {
-    if (reportData.length === 0) return;
+  const handleFiltersChange = (newFilters: ReportFilter) => {
+    setFilters(newFilters);
+  };
 
-    const doc = new jsPDF();
-    const title = `Relatório de ${filters.reportType === 'plantoes' ? 'Plantões' : 
-      filters.reportType === 'horas' ? 'Horas Trabalhadas' : 'Feriados'}`;
-  
-    // Configurações do documento
-    doc.setFont('helvetica');
-    doc.setFontSize(16);
-    doc.text(title, 14, 20);
-  
-    doc.setFontSize(10);
-    doc.text(`Período: ${format(new Date(filters.startDate), 'dd/MM/yyyy')} a ${format(new Date(filters.endDate), 'dd/MM/yyyy')}`, 14, 30);
-  
-    const selectedCollaborator = collaborators.find(c => c.id === filters.collaboratorId);
-    if (selectedCollaborator) {
-      doc.text(`Colaborador: ${selectedCollaborator.name}`, 14, 35);
-    }
-  
-    // Configurar tabela baseada no tipo de relatório
-    let tableData: any[][] = [];
-    let headers: string[] = [];
+  const handleExport = async () => {
+    if (!reportData.length || !reportSummary) return;
     
-    if (filters.reportType === 'plantoes') {
-      headers = ['Data', 'Colaborador', 'Tipo', 'Horas'];
-      tableData = reportData.map(item => [
-        format(new Date(item.data), 'dd/MM/yyyy'),
-        item.colaborador,
-        item.tipo,
-        `${item.horas}h`
-      ]);
-    } else if (filters.reportType === 'horas') {
-      headers = ['Colaborador', 'Total de Horas', 'Tipo'];
-      tableData = reportData.map(item => [
-        item.colaborador,
-        `${item.totalHoras}h`,
-        item.tipo
-      ]);
-    } else if (filters.reportType === 'feriados') {
-      headers = ['Data', 'Nome do Feriado', 'Tipo'];
-      tableData = reportData.map(item => [
-        format(new Date(item.data), 'dd/MM/yyyy'),
-        item.nome,
-        item.tipo
-      ]);
+    exportLoading.startLoading('Exportando relatório...');
+    try {
+      const csvContent = exportReportToCSV(reportData, reportSummary, filters);
+      
+      // Criar e baixar arquivo
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `relatorio_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+    } catch (error) {
+      await handleError(error, { 
+        context: 'reports_export',
+        showToast: true 
+      });
+      exportLoading.setError('Erro ao exportar relatório');
+    } finally {
+      exportLoading.stopLoading();
     }
-  
-    (doc as any).autoTable({
-      startY: 45,
-      head: [headers],
-      body: tableData,
-      theme: 'grid',
-      styles: {
-        fontSize: 10,
-        cellPadding: 5,
-        lineColor: [200, 200, 200],
-        lineWidth: 0.1
-      },
-      headStyles: {
-        fillColor: [41, 128, 185],
-        textColor: 255
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245]
-      }
-    });
-  
-    // Salvar o PDF
-    const fileName = `relatorio_${filters.reportType}_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`;
-    doc.save(fileName);
   };
 
-  if (loading) {
+  const handleSaveTemplate = async (name: string, description: string) => {
+    // TODO: Implementar salvamento de templates no Firebase
+    console.log('Salvando template:', { name, description, filters });
+  };
+
+  const quickFilters = [
+    {
+      name: 'Este Mês',
+      filters: {
+        ...filters,
+        startDate: startOfMonth(new Date()),
+        endDate: endOfMonth(new Date()),
+        groupBy: 'day' as const
+      }
+    },
+    {
+      name: 'Este Ano',
+      filters: {
+        ...filters,
+        startDate: startOfYear(new Date()),
+        endDate: endOfYear(new Date()),
+        groupBy: 'month' as const
+      }
+    },
+    {
+      name: 'Últimos 30 Dias',
+      filters: {
+        ...filters,
+        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        endDate: new Date(),
+        groupBy: 'day' as const
+      }
+    }
+  ];
+
+  if (!currentUserOrg) {
     return (
-      <div className="p-6 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+      <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+        <div className="text-center">
+          <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-2">
+            Nenhuma organização encontrada
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400">
+            Você precisa estar em uma organização para acessar os relatórios.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-        Relatórios
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">
+            Relatórios Avançados
       </h1>
-
-      <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Data Inicial
-            </label>
-            <input
-              type="date"
-              name="startDate"
-              value={filters.startDate}
-              onChange={handleFilterChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600"
-            />
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            Análise detalhada de plantões, férias e atividades
+          </p>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Data Final
-            </label>
-            <input
-              type="date"
-              name="endDate"
-              value={filters.endDate}
-              onChange={handleFilterChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Tipo de Relatório
-            </label>
-            <select
-              name="reportType"
-              value={filters.reportType}
-              onChange={handleFilterChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600"
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2"
+          >
+            <Settings size={16} />
+            {showFilters ? 'Ocultar' : 'Mostrar'} Filtros
+          </Button>
+          
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <Button
+              variant={viewMode === 'table' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('table')}
+              className="flex items-center gap-2"
             >
-              <option value="plantoes">Plantões</option>
-              <option value="horas">Horas Trabalhadas</option>
-              <option value="feriados">Feriados</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Colaborador (Opcional)
-            </label>
-            <select
-              name="collaboratorId"
-              value={filters.collaboratorId || ''}
-              onChange={handleFilterChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600"
+              <Table size={16} />
+              Tabela
+            </Button>
+            <Button
+              variant={viewMode === 'charts' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('charts')}
+              className="flex items-center gap-2"
             >
-              <option value="">Todos</option>
-              {collaborators.map((collaborator) => (
-                <option key={collaborator.id} value={collaborator.id}>
-                  {collaborator.name}
-                </option>
-              ))}
-            </select>
+              <BarChart3 size={16} />
+              Gráficos
+            </Button>
+            <Button
+              variant={viewMode === 'both' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('both')}
+              className="flex items-center gap-2"
+            >
+              <FileText size={16} />
+              Ambos
+            </Button>
           </div>
         </div>
+          </div>
 
-        <div className="mt-6 flex justify-end space-x-4">
-          <Button onClick={handleGenerateReport}>
-            Gerar Relatório
-          </Button>
-          <Button onClick={handleExportPDF} variant="outline">
-            Exportar PDF
-          </Button>
+      {/* Quick Filters */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">
+          Filtros Rápidos
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {quickFilters.map((quickFilter, index) => (
+            <button
+              key={index}
+              onClick={() => setFilters(quickFilter.filters)}
+              className="p-4 text-left border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-blue-500" />
+                <span className="font-medium text-gray-800 dark:text-gray-100">
+                  {quickFilter.name}
+                </span>
+              </div>
+            </button>
+          ))}
         </div>
-      </Card>
+      </div>
 
-      {/* TODO: Adicionar área de visualização do relatório */}
-      <Card className="p-6">
-        {isGeneratingReport ? (
-          <div className="min-h-[400px] flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+      {/* Filtros Avançados */}
+      {showFilters && (
+        <ReportFilters
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onExport={handleExport}
+          onSaveTemplate={handleSaveTemplate}
+          collaborators={collaborators}
+          loading={reportLoading.isLoading || exportLoading.isLoading}
+        />
+      )}
+
+      {/* Loading State */}
+      {reportLoading.isLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
+
+      {/* Error State */}
+      {reportLoading.error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center">
+              <FileText className="w-5 h-5 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <h3 className="font-medium text-red-800 dark:text-red-200">
+                Erro ao carregar relatório
+              </h3>
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                {reportLoading.error}
+              </p>
+            </div>
           </div>
-        ) : reportData.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  {filters.reportType === 'plantoes' && (
-                    <>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Data
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Colaborador
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Tipo
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Horas
-                      </th>
-                    </>
-                  )}
-                  {filters.reportType === 'horas' && (
-                    <>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Colaborador
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Total de Horas
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Tipo
-                      </th>
-                    </>
-                  )}
-                  {filters.reportType === 'feriados' && (
-                    <>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Data
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Nome do Feriado
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Tipo
-                      </th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                {reportData.map((item, index) => (
-                  <tr key={index} className={index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}>
-                    {filters.reportType === 'plantoes' && (
-                      <>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {format(new Date(item.data), 'dd/MM/yyyy')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.colaborador}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.tipo}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.horas}h
-                        </td>
-                      </>
-                    )}
-                    {filters.reportType === 'horas' && (
-                      <>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.colaborador}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.totalHoras}h
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.tipo}
-                        </td>
-                      </>
-                    )}
-                    {filters.reportType === 'feriados' && (
-                      <>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {format(new Date(item.data), 'dd/MM/yyyy')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.nome}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                          {item.tipo}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </div>
+      )}
+
+      {/* Content */}
+      {!reportLoading.isLoading && !reportLoading.error && (
+        <>
+          {/* Summary Stats */}
+          {reportSummary && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Total de Registros</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                      {reportSummary.totalRecords}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Plantões</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                      {reportSummary.totalShifts}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/40 rounded-full flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Férias</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                      {reportSummary.totalVacations}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/40 rounded-full flex items-center justify-center">
+                    <Users className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Usuários Únicos</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                      {reportSummary.uniqueUsers}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Main Content */}
+          <div className="space-y-6">
+            {viewMode === 'table' && (
+              <ReportTable
+                data={reportData}
+                summary={reportSummary!}
+                onExport={handleExport}
+                loading={exportLoading.isLoading}
+              />
+            )}
+            
+            {viewMode === 'charts' && (
+              <ReportCharts
+                groupedData={groupedData}
+                summary={reportSummary!}
+              />
+            )}
+            
+            {viewMode === 'both' && (
+              <div className="space-y-6">
+                <ReportCharts
+                  groupedData={groupedData}
+                  summary={reportSummary!}
+                />
+                <ReportTable
+                  data={reportData}
+                  summary={reportSummary!}
+                  onExport={handleExport}
+                  loading={exportLoading.isLoading}
+                />
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="min-h-[400px] flex items-center justify-center text-gray-500 dark:text-gray-400">
-            Selecione os filtros e gere um relatório para visualizar os dados
-          </div>
-        )}
-      </Card>
+        </>
+      )}
+
+      {/* Export Loading Overlay */}
+      <LoadingOverlay
+        isLoading={exportLoading.isLoading}
+        message={exportLoading.message}
+        variant="spinner"
+        fullScreen
+      />
     </div>
   );
 };

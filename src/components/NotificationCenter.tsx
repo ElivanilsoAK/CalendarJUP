@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNotifications } from '../contexts/NotificationContext';
+import { useFirebaseNotifications } from '../contexts/FirebaseNotificationContext';
 import { Bell, X, Check, AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -10,7 +10,7 @@ interface NotificationCenterProps {
 }
 
 const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose }) => {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, loading } = useFirebaseNotifications();
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -77,7 +77,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose
 
         {/* Content */}
         <div className="overflow-y-auto max-h-[60vh]">
-          {notifications.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
+              <p className="text-lg font-medium mb-2">Carregando notificações...</p>
+            </div>
+          ) : notifications.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <Bell size={48} className="mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium mb-2">Nenhuma notificação</p>
@@ -113,19 +118,11 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose
                           {notification.message}
                         </p>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                          {formatDistanceToNow(notification.timestamp, { 
+                          {formatDistanceToNow(notification.createdAt, { 
                             addSuffix: true, 
                             locale: ptBR 
                           })}
                         </p>
-                        {notification.action && (
-                          <button
-                            onClick={notification.action.onClick}
-                            className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                          >
-                            {notification.action.label}
-                          </button>
-                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-4">
@@ -138,13 +135,6 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose
                           <Check size={16} className="text-gray-400" />
                         </button>
                       )}
-                      <button
-                        onClick={() => removeNotification(notification.id)}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-                        title="Remover"
-                      >
-                        <X size={16} className="text-gray-400" />
-                      </button>
                     </div>
                   </div>
                 </div>

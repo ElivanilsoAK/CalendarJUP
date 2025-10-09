@@ -1,9 +1,10 @@
 import React, { useState, useEffect, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { db, storage } from '../firebase/config';
+import { db } from '../firebase/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../contexts/AuthContext';
+import { useToastContext } from '../contexts/ToastContext';
+import { uploadAvatar } from '../services/avatarService';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { UserIcon, CalendarIcon, BriefcaseIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
@@ -26,30 +27,39 @@ const CollaboratorDetailModal: React.FC<CollaboratorDetailModalProps> = ({
     collaborator,
     onEdit 
 }) => {
-    const { currentUserOrg } = useAuth();
+    const { currentUserOrg, currentUser } = useAuth();
+    const { success, error } = useToastContext();
     const [onCallDates, setOnCallDates] = useState<Date[]>([]);
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
 
     const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file || !collaborator || !currentUserOrg) return;
+        if (!file || !collaborator || !currentUserOrg || !currentUser) return;
 
         setUploading(true);
 
         try {
-            const storageRef = ref(storage, `organizations/${currentUserOrg.orgId}/avatars/${collaborator.id}`);
-            await uploadBytes(storageRef, file);
-            const avatarUrl = await getDownloadURL(storageRef);
-
-            const collaboratorRef = doc(db, 'organizations', currentUserOrg.orgId, 'collaborators', collaborator.id);
-            await updateDoc(collaboratorRef, {
-                avatar: avatarUrl
+            const result = await uploadAvatar({
+                userId: collaborator.id,
+                file,
+                organizationId: currentUserOrg.orgId,
+                isUserProfile: collaborator.id === currentUser.uid,
+                currentUser: collaborator.id === currentUser.uid ? currentUser : undefined
             });
 
-                        logCollaboratorUpdated(collaborator.id);
-        } catch (error) {
-            console.error('Error uploading avatar:', error);
+            if (result.success) {
+                success('Avatar atualizado', 'Avatar atualizado com sucesso!');
+                logCollaboratorUpdated(collaborator.id);
+                
+                // Limpar o input
+                event.target.value = '';
+            } else {
+                error('Erro no upload', result.error || 'Erro ao fazer upload do avatar.');
+            }
+        } catch (err) {
+            console.error('Error uploading avatar:', err);
+            error('Erro no upload', 'Erro ao fazer upload do avatar. Tente novamente.');
         } finally {
             setUploading(false);
         }

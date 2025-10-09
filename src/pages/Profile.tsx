@@ -1,15 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { storage, db } from '../firebase/config';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, updateDoc } from 'firebase/firestore';
-import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { useToastContext } from '../contexts/ToastContext';
+import AvatarUpload from '../components/AvatarUpload';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { Lock, Building, Upload, CheckCircle, AlertCircle, Users, Plus, ArrowRight, LogOut, Trash2 } from 'lucide-react';
 
 const Profile = () => {
   const { currentUser, createOrganization, currentUserOrg, userOrgs, switchOrg, leaveOrganization, deleteOrganization } = useAuth();
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { success, error } = useToastContext();
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
 
   // Password State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -25,54 +24,8 @@ const Profile = () => {
   const [orgSuccess, setOrgSuccess] = useState('');
   const [orgLoading, setOrgLoading] = useState(false);
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0] && currentUser) {
-      const file = e.target.files[0];
-      
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Por favor, selecione apenas arquivos de imagem.');
-        return;
-      }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('O arquivo deve ter no máximo 5MB.');
-        return;
-      }
-      
-      setUploading(true);
-      try {
-        const filePath = `avatars/${currentUser.uid}/${Date.now()}_${file.name}`;
-        const storageRef = ref(storage, filePath);
-        const uploadTask = await uploadBytes(storageRef, file);
-        const photoURL = await getDownloadURL(uploadTask.ref);
-
-        // Update Firebase Auth profile
-        await updateProfile(currentUser, { photoURL });
-
-        // Update user document in Firestore
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userDocRef, { 
-          avatar: photoURL,
-          updatedAt: new Date()
-        });
-
-        // Show success message
-        alert('Avatar atualizado com sucesso!');
-        
-        // Clear the file input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        
-      } catch (error) {
-        console.error("Error uploading avatar: ", error);
-        alert('Erro ao fazer upload do avatar. Tente novamente.');
-      } finally {
-        setUploading(false);
-      }
-    }
+  const handleAvatarUpdated = (newAvatarUrl: string) => {
+    setAvatarUrl(newAvatarUrl);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -156,20 +109,17 @@ const Profile = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-1 flex flex-col items-center text-center">
-          <div className="relative group mb-4">
-            <img 
-              src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName || currentUser?.email}&background=22c55e&color=fff&bold=true&size=128`}
-              alt="Avatar" 
-              className="w-32 h-32 rounded-full border-4 border-white dark:border-gray-700 shadow-lg"
+          <div className="mb-4">
+            <AvatarUpload
+              currentAvatar={currentUser?.photoURL || avatarUrl}
+              userId={currentUser?.uid || ''}
+              userName={currentUser?.displayName || currentUser?.email || ''}
+              organizationId={currentUserOrg?.orgId}
+              isUserProfile={true}
+              onAvatarUpdated={handleAvatarUpdated}
+              size="xl"
+              showUploadButton={false}
             />
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-              disabled={uploading}
-            >
-              {uploading ? 'Enviando...' : <Upload size={32} />}
-            </button>
-            <input type="file" ref={fileInputRef} onChange={handleAvatarChange} className="hidden" accept="image/png, image/jpeg"/>
           </div>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{currentUser?.displayName}</h2>
           <p className="text-md text-gray-500 dark:text-gray-400">{currentUser?.email}</p>

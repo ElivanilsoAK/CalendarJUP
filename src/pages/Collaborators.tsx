@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
+import { useErrorHandler } from '../hooks/useErrorHandler';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { generateAndSaveInviteCode, getInviteCode } from '../services/organizationService';
@@ -10,7 +11,8 @@ import EditProfileModal from '../components/EditProfileModal';
 import CollaboratorDetailModal from '../components/CollaboratorDetailModal';
 import AddCollaboratorModal from '../components/AddCollaboratorModal';
 import VacationModal from '../components/VacationModal';
-import { Calendar, Edit, Copy, Check, Trash2, Plane, Plus } from 'lucide-react';
+import VacationManagementModal from '../components/VacationManagementModal';
+import { Calendar, Edit, Copy, Check, Trash2, Plane, Plus, Users } from 'lucide-react';
 
 import type { Collaborator } from '../types/collaborator';
 
@@ -29,12 +31,14 @@ const RoleBadge: React.FC<{ role?: 'owner' | 'admin' | 'member' }> = ({ role }) 
 const Collaborators = () => {
     const { currentUser, currentUserOrg } = useAuth();
     const { error } = useToastContext();
+    const { handleError, withErrorHandling } = useErrorHandler();
     const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
     const [loading, setLoading] = useState(true);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isVacationModalOpen, setIsVacationModalOpen] = useState(false);
+    const [isVacationManagementModalOpen, setIsVacationManagementModalOpen] = useState(false);
     const [selectedCollaborator, setSelectedCollaborator] = useState<Collaborator | null>(null);
     const [inviteCode, setInviteCode] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
@@ -147,8 +151,10 @@ const Collaborators = () => {
             await removeUserFromOrg(collaboratorId);
             setCollaborators(prev => prev.filter(c => c.id !== collaboratorId));
         } catch (err) {
-            console.error("Failed to remove collaborator:", err);
-            error('Erro ao remover colaborador', 'Tente novamente mais tarde.');
+            await handleError(err, { 
+                context: 'removeCollaborator',
+                showToast: true 
+            });
         }
     };
 
@@ -158,60 +164,68 @@ const Collaborators = () => {
     };
 
     const handleAddCollaborator = async (email: string, role: 'admin' | 'member') => {
-        if (!currentUserOrg) {
-            throw new Error('Organização não encontrada');
+        try {
+            if (!currentUserOrg) {
+                throw new Error('Organização não encontrada');
+            }
+
+            // Verificar se o usuário já existe
+            const userQuery = query(collection(db, 'users'), where('email', '==', email));
+            const userSnapshot = await getDocs(userQuery);
+            
+            if (userSnapshot.empty) {
+                throw new Error('Usuário não encontrado. O colaborador deve ter uma conta no sistema.');
+            }
+
+            const userDoc = userSnapshot.docs[0];
+            const userId = userDoc.id;
+            const userData = userDoc.data();
+
+            // Verificar se o usuário já é membro da organização
+            const memberRef = doc(db, 'organizations', currentUserOrg.orgId, 'members', userId);
+            const existingMemberDoc = await getDoc(memberRef);
+            
+            if (existingMemberDoc.exists()) {
+                throw new Error('Este usuário já é membro da organização.');
+            }
+
+            // Adicionar o usuário como membro da organização
+            await setDoc(memberRef, {
+                email: userData.email,
+                role: role,
+                status: 'active',
+                joinedAt: serverTimestamp(),
+            });
+
+            // Atualizar o documento do usuário para incluir esta organização
+            const userDocRef = doc(db, 'users', userId);
+            const currentOrgs = userData.organizations || [];
+            if (!currentOrgs.includes(currentUserOrg.orgId)) {
+                await setDoc(userDocRef, {
+                    ...userData,
+                    organizations: [...currentOrgs, currentUserOrg.orgId],
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+
+            // Atualizar a lista local de colaboradores
+            const newCollaborator: Collaborator = {
+                id: userId,
+                name: userData.displayName || userData.name || email.split('@')[0],
+                email: userData.email,
+                role: role,
+                avatar: userData.avatar || '',
+                department: userData.department || ''
+            };
+
+            setCollaborators(prev => [...prev, newCollaborator]);
+        } catch (err) {
+            await handleError(err, { 
+                context: 'addCollaborator',
+                showToast: true 
+            });
+            throw err; // Re-throw para que o modal possa lidar com o erro
         }
-
-        // Verificar se o usuário já existe
-        const userQuery = query(collection(db, 'users'), where('email', '==', email));
-        const userSnapshot = await getDocs(userQuery);
-        
-        if (userSnapshot.empty) {
-            throw new Error('Usuário não encontrado. O colaborador deve ter uma conta no sistema.');
-        }
-
-        const userDoc = userSnapshot.docs[0];
-        const userId = userDoc.id;
-        const userData = userDoc.data();
-
-        // Verificar se o usuário já é membro da organização
-        const memberRef = doc(db, 'organizations', currentUserOrg.orgId, 'members', userId);
-        const existingMemberDoc = await getDoc(memberRef);
-        
-        if (existingMemberDoc.exists()) {
-            throw new Error('Este usuário já é membro da organização.');
-        }
-
-        // Adicionar o usuário como membro da organização
-        await setDoc(memberRef, {
-            email: userData.email,
-            role: role,
-            status: 'active',
-            joinedAt: serverTimestamp(),
-        });
-
-        // Atualizar o documento do usuário para incluir esta organização
-        const userDocRef = doc(db, 'users', userId);
-        const currentOrgs = userData.organizations || [];
-        if (!currentOrgs.includes(currentUserOrg.orgId)) {
-            await setDoc(userDocRef, {
-                ...userData,
-                organizations: [...currentOrgs, currentUserOrg.orgId],
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-        }
-
-        // Atualizar a lista local de colaboradores
-        const newCollaborator: Collaborator = {
-            id: userId,
-            name: userData.displayName || userData.name || email.split('@')[0],
-            email: userData.email,
-            role: role,
-            avatar: userData.avatar || '',
-            department: userData.department || ''
-        };
-
-        setCollaborators(prev => [...prev, newCollaborator]);
     };
 
     return (
@@ -247,6 +261,19 @@ const Collaborators = () => {
                                 className="mt-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-semibold"
                             >
                                 {inviteCode ? 'Gerar Novo Código' : 'Gerar Código de Convite'}
+                            </button>
+                        </div>
+                    )}
+                    
+                    {/* Admin Actions */}
+                    {isAdmin && (
+                        <div className="flex items-center">
+                            <button
+                                onClick={() => setIsVacationManagementModalOpen(true)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2"
+                            >
+                                <Users size={18} />
+                                <span>Gerenciar Férias</span>
                             </button>
                         </div>
                     )}
@@ -348,6 +375,11 @@ const Collaborators = () => {
                 isOpen={isVacationModalOpen}
                 onClose={() => setIsVacationModalOpen(false)}
                 collaborator={selectedCollaborator}
+            />
+
+            <VacationManagementModal
+                isOpen={isVacationManagementModalOpen}
+                onClose={() => setIsVacationManagementModalOpen(false)}
             />
 
         </div>

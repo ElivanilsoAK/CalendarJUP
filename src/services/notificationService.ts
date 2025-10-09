@@ -151,23 +151,17 @@ export const markAllNotificationsAsRead = async (
       where('userId', '==', userId),
       where('read', '==', false)
     );
-    
     const snapshot = await getDocs(q);
+    
     const batch = [];
+    snapshot.docs.forEach(doc => {
+      batch.push(updateDoc(doc.ref, {
+        read: true,
+        readAt: serverTimestamp(),
+      }));
+    });
     
-    for (const docSnapshot of snapshot.docs) {
-      batch.push(
-        updateDoc(docSnapshot.ref, {
-          read: true,
-          readAt: serverTimestamp(),
-        })
-      );
-    }
-    
-    // Firebase não suporta batch write para updateDoc múltiplo
-    for (const updatePromise of batch) {
-      await updatePromise;
-    }
+    await Promise.all(batch);
   } catch (error) {
     console.error('Erro ao marcar todas as notificações como lidas:', error);
     throw new Error('Falha ao marcar notificações como lidas.');
@@ -198,6 +192,22 @@ export const getUnreadNotificationCount = async (
 };
 
 // Notificações específicas do sistema
+
+/**
+ * Busca IDs dos administradores de uma organização
+ */
+export const getAdminIds = async (orgId: string): Promise<string[]> => {
+  try {
+    const membersRef = collection(db, 'organizations', orgId, 'members');
+    const q = query(membersRef, where('role', 'in', ['admin', 'owner']));
+    const snapshot = await getDocs(q);
+    
+    return snapshot.docs.map(doc => doc.id);
+  } catch (error) {
+    console.error('Erro ao buscar administradores:', error);
+    return [];
+  }
+};
 
 /**
  * Notifica sobre nova solicitação de férias

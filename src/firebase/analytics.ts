@@ -1,6 +1,9 @@
 import { logEvent } from "firebase/analytics";
 import { analytics } from "./config";
 
+// Export logEvent for use in other services
+export { logEvent };
+
 // GA4 Custom Events
 
 /**

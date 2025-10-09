@@ -27,6 +27,8 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { logLoginSuccess, logOrganizationCreated } from '../firebase/analytics';
+import { useErrorHandler } from '../hooks/useErrorHandler';
+import { ERROR_CODES } from '../services/errorService';
 
 interface UserOrgInfo {
   orgId: string;
@@ -63,6 +65,7 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+  const { handleError, getErrorMessage } = useErrorHandler();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserOrg, setCurrentUserOrg] = useState<UserOrgInfo | null>(null);
   const [userOrgs, setUserOrgs] = useState<UserOrgInfo[]>([]);
@@ -88,58 +91,75 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   }
 
   const signup = async (email: string, pass: string, name: string, orgCode?: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-    const user = userCredential.user;
-    await updateProfile(user, { displayName: name });
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      const user = userCredential.user;
+      await updateProfile(user, { displayName: name });
 
-    const userRef = doc(db, 'users', user.uid);
-    await setDoc(userRef, {
-      uid: user.uid,
-      email: user.email,
-      displayName: name,
-      createdAt: serverTimestamp(),
-    });
-
-    let orgIdToJoin: string;
-    let role = 'user';
-
-    if (orgCode) {
-      const existingOrgId = await getOrgIdFromCode(orgCode);
-      if (!existingOrgId) {
-        throw new Error("Organização não encontrada com o código fornecido.");
-      }
-      orgIdToJoin = existingOrgId;
-    } else {
-      const newOrgRef = doc(collection(db, 'organizations'));
-      const newCode = generateOrgCode();
-      await setDoc(newOrgRef, {
-        name: `Organização de ${name}`,
-        owner: user.uid,
-        code: newCode,
+      const userRef = doc(db, 'users', user.uid);
+      await setDoc(userRef, {
+        uid: user.uid,
+        email: user.email,
+        displayName: name,
         createdAt: serverTimestamp(),
       });
-      orgIdToJoin = newOrgRef.id;
-      role = 'admin'; // First user is admin
-      logOrganizationCreated(orgIdToJoin);
-    }
 
-    const memberRef = doc(db, 'organizations', orgIdToJoin, 'members', user.uid);
-    await setDoc(memberRef, { 
-      email: user.email,
-      role: role,
-      status: 'active',
-      joinedAt: serverTimestamp(),
-    });
+      let orgIdToJoin: string;
+      let role = 'user';
+
+      if (orgCode) {
+        const existingOrgId = await getOrgIdFromCode(orgCode);
+        if (!existingOrgId) {
+          throw new Error("Organização não encontrada com o código fornecido.");
+        }
+        orgIdToJoin = existingOrgId;
+      } else {
+        const newOrgRef = doc(collection(db, 'organizations'));
+        const newCode = generateOrgCode();
+        await setDoc(newOrgRef, {
+          name: `Organização de ${name}`,
+          owner: user.uid,
+          code: newCode,
+          createdAt: serverTimestamp(),
+        });
+        orgIdToJoin = newOrgRef.id;
+        role = 'admin'; // First user is admin
+        logOrganizationCreated(orgIdToJoin);
+      }
+
+      const memberRef = doc(db, 'organizations', orgIdToJoin, 'members', user.uid);
+      await setDoc(memberRef, { 
+        email: user.email,
+        role: role,
+        status: 'active',
+        joinedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      await handleError(error, { 
+        context: 'signup',
+        showToast: true 
+      });
+      throw error; // Re-throw para que o componente possa lidar com o erro
+    }
   };
 
   const login = async (email: string, pass: string) => {
-    await signInWithEmailAndPassword(auth, email, pass);
-    logLoginSuccess();
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+      logLoginSuccess();
+    } catch (error) {
+      await handleError(error, { 
+        context: 'login',
+        showToast: true 
+      });
+      throw error; // Re-throw para que o componente possa lidar com o erro
+    }
   };
 
   const loginWithGoogle = async (orgCode?: string) => {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
     const user = result.user;
     const additionalInfo = getAdditionalUserInfo(result);
 
@@ -185,14 +205,28 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
         status: 'active',
         joinedAt: serverTimestamp(),
       });
+      }
+      logLoginSuccess();
+    } catch (error) {
+      await handleError(error, { 
+        context: 'loginWithGoogle',
+        showToast: true 
+      });
+      throw error; // Re-throw para que o componente possa lidar com o erro
     }
-    logLoginSuccess();
   }
 
   const logout = async () => {
-    await signOut(auth);
-    setCurrentUserOrg(null);
-    setUserOrgs([]);
+    try {
+      await signOut(auth);
+      setCurrentUserOrg(null);
+      setUserOrgs([]);
+    } catch (error) {
+      await handleError(error, { 
+        context: 'logout',
+        showToast: true 
+      });
+    }
   };
 
   const switchOrg = (orgId: string) => {
@@ -203,124 +237,148 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   };
 
   const leaveOrganization = async (orgId: string) => {
-    if (!currentUser) throw new Error("Usuário não autenticado.");
+    try {
+      if (!currentUser) throw new Error("Usuário não autenticado.");
 
-    // Remove user from organization members
-    const memberRef = doc(db, 'organizations', orgId, 'members', currentUser.uid);
-    await deleteDoc(memberRef);
+      // Remove user from organization members
+      const memberRef = doc(db, 'organizations', orgId, 'members', currentUser.uid);
+      await deleteDoc(memberRef);
 
-    // Update user document to remove organization
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    const userDoc = await getDoc(userDocRef);
-    
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const currentOrgs = userData.organizations || [];
-      const updatedOrgs = currentOrgs.filter((id: string) => id !== orgId);
+      // Update user document to remove organization
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
       
-      await updateDoc(userDocRef, {
-        organizations: updatedOrgs,
-        updatedAt: serverTimestamp()
-      });
-    }
-
-    // Refresh auth context
-    await fetchUserAndOrgData(currentUser);
-  };
-
-  const deleteOrganization = async (orgId: string) => {
-    if (!currentUser) throw new Error("Usuário não autenticado.");
-
-    // Check if user is owner
-    const orgRef = doc(db, 'organizations', orgId);
-    const orgDoc = await getDoc(orgRef);
-    
-    if (!orgDoc.exists() || orgDoc.data().owner !== currentUser.uid) {
-      throw new Error("Apenas o proprietário pode excluir a organização.");
-    }
-
-    // Delete all subcollections first
-    const membersRef = collection(db, 'organizations', orgId, 'members');
-    const membersSnapshot = await getDocs(membersRef);
-    const deletePromises = membersSnapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
-
-    const calendarsRef = collection(db, 'organizations', orgId, 'calendars');
-    const calendarsSnapshot = await getDocs(calendarsRef);
-    const deleteCalendarPromises = calendarsSnapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deleteCalendarPromises);
-
-    // Delete the organization
-    await deleteDoc(orgRef);
-
-    // Update user document to remove organization
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    const userDoc = await getDoc(userDocRef);
-    
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const currentOrgs = userData.organizations || [];
-      const updatedOrgs = currentOrgs.filter((id: string) => id !== orgId);
-      
-      await updateDoc(userDocRef, {
-        organizations: updatedOrgs,
-        updatedAt: serverTimestamp()
-      });
-    }
-
-    // Refresh auth context
-    await fetchUserAndOrgData(currentUser);
-  };
-
-  const createOrganization = async (orgName: string) => {
-    if (!currentUser) throw new Error("Usuário não autenticado.");
-
-    const newOrgRef = doc(collection(db, 'organizations'));
-    const newCode = generateOrgCode();
-    const newOrgData = {
-      name: orgName,
-      owner: currentUser.uid,
-      code: newCode,
-      createdAt: serverTimestamp(),
-    };
-    await setDoc(newOrgRef, newOrgData);
-    logOrganizationCreated(newOrgRef.id);
-
-    const memberRef = doc(db, 'organizations', newOrgRef.id, 'members', currentUser.uid);
-    await setDoc(memberRef, { 
-      email: currentUser.email,
-      role: 'owner', // Changed from 'admin' to 'owner'
-      status: 'active',
-      joinedAt: serverTimestamp(),
-    });
-
-    // Update user document with the new organization
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    const userDoc = await getDoc(userDocRef);
-    
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      const currentOrgs = userData.organizations || [];
-      if (!currentOrgs.includes(newOrgRef.id)) {
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const currentOrgs = userData.organizations || [];
+        const updatedOrgs = currentOrgs.filter((id: string) => id !== orgId);
+        
         await updateDoc(userDocRef, {
-          organizations: [...currentOrgs, newOrgRef.id],
+          organizations: updatedOrgs,
           updatedAt: serverTimestamp()
         });
       }
-    } else {
-      // Create user document if it doesn't exist
-      await setDoc(userDocRef, {
-        uid: currentUser.uid,
-        email: currentUser.email,
-        displayName: currentUser.displayName,
-        organizations: [newOrgRef.id],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
 
-    // Refresh the auth context to reload organizations
-    await fetchUserAndOrgData(currentUser);
+      // Refresh auth context
+      await fetchUserAndOrgData(currentUser);
+    } catch (error) {
+      await handleError(error, { 
+        context: 'leaveOrganization',
+        showToast: true 
+      });
+      throw error;
+    }
+  };
+
+  const deleteOrganization = async (orgId: string) => {
+    try {
+      if (!currentUser) throw new Error("Usuário não autenticado.");
+
+      // Check if user is owner
+      const orgRef = doc(db, 'organizations', orgId);
+      const orgDoc = await getDoc(orgRef);
+      
+      if (!orgDoc.exists() || orgDoc.data().owner !== currentUser.uid) {
+        throw new Error("Apenas o proprietário pode excluir a organização.");
+      }
+
+      // Delete all subcollections first
+      const membersRef = collection(db, 'organizations', orgId, 'members');
+      const membersSnapshot = await getDocs(membersRef);
+      const deletePromises = membersSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      const calendarsRef = collection(db, 'organizations', orgId, 'calendars');
+      const calendarsSnapshot = await getDocs(calendarsRef);
+      const deleteCalendarPromises = calendarsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deleteCalendarPromises);
+
+      // Delete the organization
+      await deleteDoc(orgRef);
+
+      // Update user document to remove organization
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const currentOrgs = userData.organizations || [];
+        const updatedOrgs = currentOrgs.filter((id: string) => id !== orgId);
+        
+        await updateDoc(userDocRef, {
+          organizations: updatedOrgs,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Refresh auth context
+      await fetchUserAndOrgData(currentUser);
+    } catch (error) {
+      await handleError(error, { 
+        context: 'deleteOrganization',
+        showToast: true 
+      });
+      throw error;
+    }
+  };
+
+  const createOrganization = async (orgName: string) => {
+    try {
+      if (!currentUser) throw new Error("Usuário não autenticado.");
+
+      const newOrgRef = doc(collection(db, 'organizations'));
+      const newCode = generateOrgCode();
+      const newOrgData = {
+        name: orgName,
+        owner: currentUser.uid,
+        code: newCode,
+        createdAt: serverTimestamp(),
+      };
+      await setDoc(newOrgRef, newOrgData);
+      logOrganizationCreated(newOrgRef.id);
+
+      const memberRef = doc(db, 'organizations', newOrgRef.id, 'members', currentUser.uid);
+      await setDoc(memberRef, { 
+        email: currentUser.email,
+        role: 'owner', // Changed from 'admin' to 'owner'
+        status: 'active',
+        joinedAt: serverTimestamp(),
+      });
+
+      // Update user document with the new organization
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const currentOrgs = userData.organizations || [];
+        if (!currentOrgs.includes(newOrgRef.id)) {
+          await updateDoc(userDocRef, {
+            organizations: [...currentOrgs, newOrgRef.id],
+            updatedAt: serverTimestamp()
+          });
+        }
+      } else {
+        // Create user document if it doesn't exist
+        await setDoc(userDocRef, {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          organizations: [newOrgRef.id],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Refresh the auth context to reload organizations
+      await fetchUserAndOrgData(currentUser);
+    } catch (error) {
+      await handleError(error, { 
+        context: 'createOrganization',
+        showToast: true 
+      });
+      throw error;
+    }
   };
 
   const handlePendingInvite = async (user: User) => {
@@ -414,7 +472,11 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
             }
           }
         } catch (error) {
-          console.error('Error in fallback organization search:', error);
+          await handleError(error, { 
+            context: 'fetchUserAndOrgData_fallback',
+            showToast: false,
+            logToConsole: true
+          });
         }
       }
 

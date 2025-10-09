@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useFormValidation } from '../hooks/useValidation';
+import { formValidations } from '../services/validationService';
+import ValidatedInput from '../components/forms/ValidatedInput';
 import { Calendar, Mail, Lock, AlertCircle, Building, User } from 'lucide-react';
 
 const GoogleIcon = () => (
@@ -15,15 +18,27 @@ const GoogleIcon = () => (
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [orgCode, setOrgCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
   const { login, signup, loginWithGoogle, currentUser } = useAuth();
   const navigate = useNavigate();
+
+  // Validação para login
+  const loginValidation = useFormValidation('login', {
+    email: '',
+    password: ''
+  });
+
+  // Validação para registro
+  const signupValidation = useFormValidation('signup', {
+    email: '',
+    password: '',
+    name: '',
+    orgCode: ''
+  });
+
+  const currentValidation = isLogin ? loginValidation : signupValidation;
 
   useEffect(() => {
     if (currentUser) {
@@ -34,12 +49,24 @@ const Login = () => {
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // Validar formulário
+    const validation = currentValidation.validate();
+    if (!validation.isValid) {
+      return;
+    }
+    
     setLoading(true);
     try {
       if (isLogin) {
-        await login(email, password);
+        await login(currentValidation.values.email, currentValidation.values.password);
       } else {
-        await signup(email, password, name, orgCode);
+        await signup(
+          currentValidation.values.email, 
+          currentValidation.values.password, 
+          currentValidation.values.name, 
+          currentValidation.values.orgCode
+        );
       }
       navigate('/');
     } catch (err: unknown) {
@@ -92,7 +119,12 @@ const Login = () => {
             </h2>
             <div className="mt-2 text-end">
               <button 
-                onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                onClick={() => { 
+                  setIsLogin(!isLogin); 
+                  setError(''); 
+                  loginValidation.resetAll();
+                  signupValidation.resetAll();
+                }}
                 className="text-sm text-green-600 hover:text-green-500 dark:text-green-400 dark:hover:text-green-500"
               >
                 {isLogin ? 'Criar uma conta' : 'Já tenho uma conta'}
@@ -103,85 +135,63 @@ const Login = () => {
           {/* Login Form */}
           <form onSubmit={handleEmailSubmit} className="mt-6 space-y-6">
             {/* Organization Code */}
-            <div>
-              <label htmlFor="org-code" className="sr-only">Código da Organização</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Building className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="org-code"
-                  name="org-code"
-                  type="text"
-                  value={orgCode}
-                  onChange={(e) => setOrgCode(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Código da Organização (opcional)"
-                />
-              </div>
-            </div>
+            <ValidatedInput
+              label="Código da Organização"
+              type="text"
+              value={currentValidation.values.orgCode}
+              onChange={(e) => currentValidation.setFieldValue('orgCode', e.target.value.toUpperCase())}
+              onBlur={() => currentValidation.setFieldTouched('orgCode')}
+              error={currentValidation.errors.orgCode}
+              touched={currentValidation.touched.orgCode}
+              leftIcon={<Building size={20} />}
+              placeholder="ABC123 (opcional)"
+              maxLength={6}
+              helperText="Deixe em branco para criar uma nova organização"
+            />
 
             {/* Name (only for signup) */}
             {!isLogin && (
-              <div>
-                <label htmlFor="name" className="sr-only">Nome</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    required={!isLogin}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                    placeholder="Seu nome completo"
-                  />
-                </div>
-              </div>
+              <ValidatedInput
+                label="Nome Completo"
+                type="text"
+                value={currentValidation.values.name}
+                onChange={(e) => currentValidation.setFieldValue('name', e.target.value)}
+                onBlur={() => currentValidation.setFieldTouched('name')}
+                error={currentValidation.errors.name}
+                touched={currentValidation.touched.name}
+                leftIcon={<User size={20} />}
+                placeholder="Seu nome completo"
+                required
+              />
             )}
 
             {/* Email */}
-            <div>
-              <label htmlFor="email-address" className="sr-only">Email</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email-address"
-                  name="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Seu e-mail"
-                />
-              </div>
-            </div>
+            <ValidatedInput
+              label="Email"
+              type="email"
+              value={currentValidation.values.email}
+              onChange={(e) => currentValidation.setFieldValue('email', e.target.value)}
+              onBlur={() => currentValidation.setFieldTouched('email')}
+              error={currentValidation.errors.email}
+              touched={currentValidation.touched.email}
+              leftIcon={<Mail size={20} />}
+              placeholder="seu@email.com"
+              required
+            />
 
             {/* Password */}
-            <div>
-              <label htmlFor="password" className="sr-only">Senha</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                  placeholder="Sua senha"
-                />
-              </div>
-            </div>
+            <ValidatedInput
+              label="Senha"
+              type="password"
+              value={currentValidation.values.password}
+              onChange={(e) => currentValidation.setFieldValue('password', e.target.value)}
+              onBlur={() => currentValidation.setFieldTouched('password')}
+              error={currentValidation.errors.password}
+              touched={currentValidation.touched.password}
+              leftIcon={<Lock size={20} />}
+              placeholder="••••••••"
+              required
+            />
 
             {/* Login Button */}
             <button

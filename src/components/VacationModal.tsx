@@ -2,6 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
+import { useFormValidation } from '../hooks/useValidation';
+import { formValidations } from '../services/validationService';
+import ValidatedInput from './forms/ValidatedInput';
+import ValidatedTextarea from './forms/ValidatedTextarea';
 import { 
   requestVacation, 
   getUserVacations, 
@@ -13,7 +17,8 @@ import {
 import { 
   notifyVacationRequest, 
   notifyVacationApproved, 
-  notifyVacationRejected 
+  notifyVacationRejected,
+  getAdminIds
 } from '../services/notificationService';
 import { format, parseISO, isBefore } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,12 +39,14 @@ const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collabor
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [loading, setLoading] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
-  const [newVacation, setNewVacation] = useState({
+  const [submitting, setSubmitting] = useState(false);
+
+  // Validação do formulário de férias
+  const vacationValidation = useFormValidation('vacation', {
     startDate: '',
     endDate: '',
     reason: ''
   });
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen && collaborator && currentUserOrg) {
@@ -65,21 +72,9 @@ const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collabor
   const handleSubmitVacation = async () => {
     if (!currentUserOrg || !collaborator || !currentUser) return;
     
-    if (!newVacation.startDate || !newVacation.endDate) {
-      warning('Campos obrigatórios', 'Por favor, preencha as datas de início e fim');
-      return;
-    }
-
-    const startDate = new Date(newVacation.startDate);
-    const endDate = new Date(newVacation.endDate);
-    
-    if (isBefore(endDate, startDate)) {
-      warning('Data inválida', 'A data de fim deve ser posterior à data de início');
-      return;
-    }
-
-    if (isBefore(startDate, new Date())) {
-      warning('Data inválida', 'Não é possível solicitar férias para datas passadas');
+    // Validar formulário
+    const validation = vacationValidation.validate();
+    if (!validation.isValid) {
       return;
     }
 
@@ -88,12 +83,12 @@ const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collabor
       await requestVacation(currentUserOrg.orgId, {
         userId: collaborator.id,
         userName: collaborator.name,
-        startDate: newVacation.startDate,
-        endDate: newVacation.endDate,
-        reason: newVacation.reason || undefined
+        startDate: vacationValidation.values.startDate,
+        endDate: vacationValidation.values.endDate,
+        reason: vacationValidation.values.reason || undefined
       });
       
-      setNewVacation({ startDate: '', endDate: '', reason: '' });
+      vacationValidation.resetAll();
       setShowRequestForm(false);
       await loadVacations();
       success('Solicitação enviada', 'Solicitação de férias enviada com sucesso!');
@@ -101,23 +96,22 @@ const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collabor
       // Notificar admins sobre nova solicitação
       if (currentUserOrg) {
         try {
-          // Buscar IDs dos admins (simplificado - em produção seria melhor buscar do banco)
-          const adminIds: string[] = []; // TODO: Implementar busca de admins
+          const adminIds = await getAdminIds(currentUserOrg.orgId);
           if (adminIds.length > 0) {
             await notifyVacationRequest(
               currentUserOrg.orgId,
               adminIds,
               collaborator.name,
-              newVacation.startDate,
-              newVacation.endDate
+              vacationValidation.values.startDate,
+              vacationValidation.values.endDate
             );
           }
         } catch (err) {
-          console.error('Erro ao enviar notificação:', err);
+          // Erro na notificação não deve impedir o fluxo principal
+          console.warn('Erro ao enviar notificação:', err);
         }
       }
     } catch (err) {
-      console.error('Erro ao solicitar férias:', err);
       error('Erro ao solicitar férias', 'Tente novamente mais tarde.');
     } finally {
       setSubmitting(false);
@@ -278,39 +272,38 @@ const VacationModal: React.FC<VacationModalProps> = ({ isOpen, onClose, collabor
                     Nova Solicitação de Férias
                   </h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Data de Início
-                      </label>
-                      <input
-                        type="date"
-                        value={newVacation.startDate}
-                        onChange={(e) => setNewVacation(prev => ({ ...prev, startDate: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-600 dark:border-gray-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Data de Fim
-                      </label>
-                      <input
-                        type="date"
-                        value={newVacation.endDate}
-                        onChange={(e) => setNewVacation(prev => ({ ...prev, endDate: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-600 dark:border-gray-500"
-                      />
-                    </div>
+                    <ValidatedInput
+                      label="Data de Início"
+                      type="date"
+                      value={vacationValidation.values.startDate}
+                      onChange={(e) => vacationValidation.setFieldValue('startDate', e.target.value)}
+                      onBlur={() => vacationValidation.setFieldTouched('startDate')}
+                      error={vacationValidation.errors.startDate}
+                      touched={vacationValidation.touched.startDate}
+                      required
+                    />
+                    <ValidatedInput
+                      label="Data de Fim"
+                      type="date"
+                      value={vacationValidation.values.endDate}
+                      onChange={(e) => vacationValidation.setFieldValue('endDate', e.target.value)}
+                      onBlur={() => vacationValidation.setFieldTouched('endDate')}
+                      error={vacationValidation.errors.endDate}
+                      touched={vacationValidation.touched.endDate}
+                      required
+                    />
                   </div>
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Motivo (opcional)
-                    </label>
-                    <textarea
-                      value={newVacation.reason}
-                      onChange={(e) => setNewVacation(prev => ({ ...prev, reason: e.target.value }))}
-                      placeholder="Descreva o motivo das férias..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-600 dark:border-gray-500"
+                    <ValidatedTextarea
+                      label="Motivo (opcional)"
+                      value={vacationValidation.values.reason}
+                      onChange={(e) => vacationValidation.setFieldValue('reason', e.target.value)}
+                      onBlur={() => vacationValidation.setFieldTouched('reason')}
+                      error={vacationValidation.errors.reason}
+                      touched={vacationValidation.touched.reason}
                       rows={3}
+                      placeholder="Descreva o motivo das férias..."
+                      maxLength={500}
                     />
                   </div>
                   <div className="flex gap-3">

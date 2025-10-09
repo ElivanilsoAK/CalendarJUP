@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { useNotifications } from '../contexts/NotificationContext';
+import { useFirebaseNotifications } from '../contexts/FirebaseNotificationContext';
 import { useNavigate, NavLink } from 'react-router-dom';
 import HelpModal from './HelpModal';
 import NotificationCenter from './NotificationCenter';
@@ -30,7 +30,7 @@ type LayoutProps = {
 const Layout = ({ children }: LayoutProps) => {
   const { currentUser, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { unreadCount } = useNotifications();
+  const { unreadCount } = useFirebaseNotifications();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
