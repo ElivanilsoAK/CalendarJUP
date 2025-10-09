@@ -28,7 +28,7 @@ import {
 } from 'firebase/firestore';
 import { logLoginSuccess, logOrganizationCreated } from '../firebase/analytics';
 import { useErrorHandler } from '../hooks/useErrorHandler';
-import { ERROR_CODES } from '../services/errorService';
+// import { ERROR_CODES } from '../services/errorService';
 
 interface UserOrgInfo {
   orgId: string;
@@ -65,7 +65,7 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
-  const { handleError, getErrorMessage } = useErrorHandler();
+  const { handleError } = useErrorHandler();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserOrg, setCurrentUserOrg] = useState<UserOrgInfo | null>(null);
   const [userOrgs, setUserOrgs] = useState<UserOrgInfo[]>([]);

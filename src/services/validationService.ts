@@ -1,6 +1,5 @@
 // src/services/validationService.ts
-import { isEmail, isStrongPassword, isDate, isAfter, isBefore, isWithinInterval } from 'date-fns';
-import { parseISO, addDays, subDays } from 'date-fns';
+import { isBefore, parseISO } from 'date-fns';
 
 export interface ValidationRule {
   required?: boolean;

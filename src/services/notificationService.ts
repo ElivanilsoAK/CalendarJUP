@@ -153,7 +153,7 @@ export const markAllNotificationsAsRead = async (
     );
     const snapshot = await getDocs(q);
     
-    const batch = [];
+    const batch: Promise<void>[] = [];
     snapshot.docs.forEach(doc => {
       batch.push(updateDoc(doc.ref, {
         read: true,

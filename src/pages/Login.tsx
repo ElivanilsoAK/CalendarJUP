@@ -1,36 +1,25 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+// src/pages/Login.tsx
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
 import { useFormValidation } from '../hooks/useValidation';
-import { formValidations } from '../services/validationService';
 import ValidatedInput from '../components/forms/ValidatedInput';
-import { Calendar, Mail, Lock, AlertCircle, Building, User } from 'lucide-react';
-
-const GoogleIcon = () => (
-  <svg className="w-5 h-5 mr-3" viewBox="0 0 48 48">
-    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-    <path fill="none" d="M0 0h48v48H0z"></path>
-  </svg>
-);
+import { Mail, Lock, User, Building, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const { login, signup, loginWithGoogle, currentUser } = useAuth();
+  const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Validação para login
   const loginValidation = useFormValidation('login', {
     email: '',
     password: ''
   });
-
-  // Validação para registro
   const signupValidation = useFormValidation('signup', {
     email: '',
     password: '',
@@ -40,22 +29,15 @@ const Login = () => {
 
   const currentValidation = isLogin ? loginValidation : signupValidation;
 
-  useEffect(() => {
-    if (currentUser) {
-      navigate('/');
-    }
-  }, [currentUser, navigate]);
-
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
-    // Validar formulário
     const validation = currentValidation.validate();
     if (!validation.isValid) {
       return;
     }
-    
+
     setLoading(true);
     try {
       if (isLogin) {
@@ -64,8 +46,8 @@ const Login = () => {
         await signup(
           currentValidation.values.email, 
           currentValidation.values.password, 
-          currentValidation.values.name, 
-          currentValidation.values.orgCode
+          (currentValidation.values as any).name, 
+          (currentValidation.values as any).orgCode
         );
       }
       navigate('/');
@@ -81,7 +63,7 @@ const Login = () => {
     setError('');
     setLoading(true);
     try {
-      await loginWithGoogle(orgCode || undefined);
+      await loginWithGoogle();
       navigate('/');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Ocorreu um erro com o login do Google.';
@@ -92,82 +74,36 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Side - Background Image */}
-      <div className="hidden lg:block lg:w-1/2 relative overflow-hidden">
-        <img 
-          src="/padrao.jpg" 
-          alt="Background" 
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent" />
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
+            {isLogin ? 'Entre na sua conta' : 'Crie sua conta'}
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+            {isLogin ? 'Acesse o CalendarJUP' : 'Comece a usar o CalendarJUP'}
+          </p>
+        </div>
 
-      {/* Right Side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center px-8 py-12 bg-white dark:bg-gray-900">
-        <div className="w-full max-w-md space-y-8">
-          {/* Logo and Title */}
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Calendar className="h-8 w-auto text-green-600 dark:text-green-500" />
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                CalendarJUP
-              </h1>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              Bem-vindo de Volta
-            </h2>
-            <div className="mt-2 text-end">
-              <button 
-                onClick={() => { 
-                  setIsLogin(!isLogin); 
-                  setError(''); 
-                  loginValidation.resetAll();
-                  signupValidation.resetAll();
-                }}
-                className="text-sm text-green-600 hover:text-green-500 dark:text-green-400 dark:hover:text-green-500"
-              >
-                {isLogin ? 'Criar uma conta' : 'Já tenho uma conta'}
-              </button>
-            </div>
-          </div>
-
-          {/* Login Form */}
-          <form onSubmit={handleEmailSubmit} className="mt-6 space-y-6">
-            {/* Organization Code */}
-            <ValidatedInput
-              label="Código da Organização"
-              type="text"
-              value={currentValidation.values.orgCode}
-              onChange={(e) => currentValidation.setFieldValue('orgCode', e.target.value.toUpperCase())}
-              onBlur={() => currentValidation.setFieldTouched('orgCode')}
-              error={currentValidation.errors.orgCode}
-              touched={currentValidation.touched.orgCode}
-              leftIcon={<Building size={20} />}
-              placeholder="ABC123 (opcional)"
-              maxLength={6}
-              helperText="Deixe em branco para criar uma nova organização"
-            />
-
-            {/* Name (only for signup) */}
+        <Card className="p-8">
+          <form onSubmit={handleEmailSubmit} className="space-y-6">
             {!isLogin && (
               <ValidatedInput
-                label="Nome Completo"
+                label="Nome completo"
                 type="text"
-                value={currentValidation.values.name}
-                onChange={(e) => currentValidation.setFieldValue('name', e.target.value)}
-                onBlur={() => currentValidation.setFieldTouched('name')}
-                error={currentValidation.errors.name}
-                touched={currentValidation.touched.name}
+                value={(currentValidation.values as any).name}
+                onChange={(e) => currentValidation.setFieldValue('name' as any, e.target.value)}
+                onBlur={() => currentValidation.setFieldTouched('name' as any)}
+                error={(currentValidation.errors as any).name}
+                touched={(currentValidation.touched as any).name}
                 leftIcon={<User size={20} />}
                 placeholder="Seu nome completo"
                 required
               />
             )}
 
-            {/* Email */}
             <ValidatedInput
-              label="Email"
+              label="E-mail"
               type="email"
               value={currentValidation.values.email}
               onChange={(e) => currentValidation.setFieldValue('email', e.target.value)}
@@ -179,73 +115,102 @@ const Login = () => {
               required
             />
 
-            {/* Password */}
             <ValidatedInput
               label="Senha"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               value={currentValidation.values.password}
               onChange={(e) => currentValidation.setFieldValue('password', e.target.value)}
               onBlur={() => currentValidation.setFieldTouched('password')}
               error={currentValidation.errors.password}
               touched={currentValidation.touched.password}
               leftIcon={<Lock size={20} />}
-              placeholder="••••••••"
+              rightIcon={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              }
+              placeholder="Sua senha"
               required
             />
 
-            {/* Login Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-400 disabled:cursor-not-allowed"
-            >
-              {loading ? (isLogin ? 'Entrando...' : 'Criando conta...') : (isLogin ? 'Entrar' : 'Criar conta')}
-            </button>
+            {!isLogin && (
+              <ValidatedInput
+                label="Código da Organização"
+                type="text"
+                value={(currentValidation.values as any).orgCode}
+                onChange={(e) => currentValidation.setFieldValue('orgCode' as any, e.target.value.toUpperCase())}
+                onBlur={() => currentValidation.setFieldTouched('orgCode' as any)}
+                error={(currentValidation.errors as any).orgCode}
+                touched={(currentValidation.touched as any).orgCode}
+                leftIcon={<Building size={20} />}
+                placeholder="ABC123 (opcional)"
+                maxLength={6}
+                helperText="Deixe em branco para criar uma nova organização"
+              />
+            )}
 
-            {/* Divider */}
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300 dark:border-gray-700" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-gray-900 text-gray-500">
-                  ou
-                </span>
-              </div>
-            </div>
-
-            {/* Google Login */}
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-            >
-              <GoogleIcon />
-              Continuar com Google
-            </button>
-
-            {/* Error Message */}
             {error && (
-              <div className="flex items-center text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-md">
-                <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                {error}
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
               </div>
             )}
 
-            {/* Terms of Service */}
-            <p className="mt-4 text-xs text-center text-gray-600 dark:text-gray-400">
-              Ao continuar, você concorda com nossos{' '}
-              <a href="#" className="text-green-600 hover:text-green-500">
-                Termos de Serviço
-              </a>{' '}
-              e{' '}
-              <a href="#" className="text-green-600 hover:text-green-500">
-                Política de Privacidade
-              </a>
-            </p>
+            <Button
+              type="submit"
+              loading={loading}
+              className="w-full"
+              disabled={!currentValidation.isValid}
+            >
+              {isLogin ? 'Entrar' : 'Criar Conta'}
+            </Button>
           </form>
-        </div>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300 dark:border-gray-600" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">Ou continue com</span>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <Button
+                variant="outline"
+                onClick={handleGoogleLogin}
+                loading={loading}
+                className="w-full flex items-center justify-center"
+              >
+                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Google
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-6 text-center">
+            <button 
+              onClick={() => { 
+                setIsLogin(!isLogin); 
+                setError(''); 
+                loginValidation.resetAll();
+                signupValidation.resetAll();
+              }}
+              className="text-sm text-green-600 hover:text-green-500 dark:text-green-400 dark:hover:text-green-500"
+            >
+              {isLogin ? 'Criar uma conta' : 'Já tenho uma conta'}
+            </button>
+          </div>
+        </Card>
       </div>
     </div>
   );

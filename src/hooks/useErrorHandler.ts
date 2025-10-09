@@ -3,18 +3,14 @@ import { useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
 import { 
-  handleError, 
-  handleNetworkError, 
-  handleValidationError,
-  handlePermissionError,
-  getErrorMessage,
+  handleError,
   type ErrorHandlerOptions,
   type AppError 
 } from '../services/errorService';
 
 export const useErrorHandler = () => {
-  const { currentUser } = useAuth();
-  const { error: showErrorToast, warning, success } = useToastContext();
+  // const { currentUser } = useAuth();
+  const { error: showErrorToast, warning } = useToastContext();
 
   const handleAppError = useCallback(async (
     error: any,
@@ -37,7 +33,7 @@ export const useErrorHandler = () => {
     error: any,
     context?: string
   ): Promise<AppError> => {
-    const appError = handleNetworkError(error, context);
+    const appError = await handleError(error, { context: context || 'network' });
     showErrorToast('Erro de Conexão', appError.message);
     return appError;
   }, [showErrorToast]);
@@ -46,65 +42,33 @@ export const useErrorHandler = () => {
     message: string,
     context?: string
   ): AppError => {
-    const appError = handleValidationError(message, context);
+    const appError = {
+      code: 'VALIDATION_ERROR',
+      message,
+      context: context || 'validation',
+      timestamp: new Date()
+    };
     warning('Dados Inválidos', appError.message);
     return appError;
   }, [warning]);
 
-  const handlePermissionError = useCallback(async (
-    error: any,
+  const handlePermissionError = useCallback((
     context?: string
-  ): Promise<AppError> => {
-    const appError = handlePermissionError(error, context);
-    showErrorToast('Sem Permissão', appError.message);
+  ): AppError => {
+    const appError = {
+      code: 'PERMISSION_ERROR',
+      message: 'Você não tem permissão para realizar esta ação',
+      context: context || 'permission',
+      timestamp: new Date()
+    };
+    warning('Permissão Negada', appError.message);
     return appError;
-  }, [showErrorToast]);
-
-  const getErrorMessageSafe = useCallback((
-    error: any,
-    fallback?: string
-  ): string => {
-    return getErrorMessage(error, fallback);
-  }, []);
-
-  // Wrapper para operações assíncronas
-  const withErrorHandling = useCallback(<T extends any[], R>(
-    fn: (...args: T) => Promise<R>,
-    options: ErrorHandlerOptions = {}
-  ) => {
-    return async (...args: T): Promise<R | null> => {
-      try {
-        return await fn(...args);
-      } catch (error) {
-        await handleAppError(error, options);
-        return null;
-      }
-    };
-  }, [handleAppError]);
-
-  // Wrapper para operações síncronas
-  const withSyncErrorHandling = useCallback(<T extends any[], R>(
-    fn: (...args: T) => R,
-    options: ErrorHandlerOptions = {}
-  ) => {
-    return (...args: T): R | null => {
-      try {
-        return fn(...args);
-      } catch (error) {
-        handleAppError(error, options);
-        return null;
-      }
-    };
-  }, [handleAppError]);
+  }, [warning]);
 
   return {
     handleError: handleAppError,
     handleNetworkError,
     handleValidationError,
-    handlePermissionError,
-    getErrorMessage: getErrorMessageSafe,
-    withErrorHandling,
-    withSyncErrorHandling,
-    currentUserId: currentUser?.uid
+    handlePermissionError
   };
 };

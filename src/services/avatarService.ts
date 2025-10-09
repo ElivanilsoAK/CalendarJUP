@@ -8,7 +8,8 @@ import {
   uploadBytesResumable 
 } from 'firebase/storage';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { updateProfile, User } from 'firebase/auth';
+import { updateProfile } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 
 export interface AvatarUploadResult {
   success: boolean;

@@ -237,7 +237,7 @@ export const useFormValidation = <T extends Record<string, any>>(
 ) => {
   const validationRules = useMemo(() => {
     // Mapear regras específicas do formulário
-    const rules: Partial<Record<keyof T, ValidationRule[]>> = {};
+    const rules: any = {};
     
     switch (formType) {
       case 'login':

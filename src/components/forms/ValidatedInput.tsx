@@ -2,7 +2,7 @@
 import React, { forwardRef } from 'react';
 import { AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 
-interface ValidatedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface ValidatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string;
   error?: string | null;
   touched?: boolean;
@@ -10,9 +10,9 @@ interface ValidatedInputProps extends React.InputHTMLAttributes<HTMLInputElement
   type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'date' | 'month';
   helperText?: string;
   leftIcon?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg';
   rightIcon?: React.ReactNode;
   variant?: 'default' | 'filled' | 'outlined';
-  size?: 'sm' | 'md' | 'lg';
 }
 
 const ValidatedInput = forwardRef<HTMLInputElement, ValidatedInputProps>(

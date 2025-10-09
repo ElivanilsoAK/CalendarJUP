@@ -1,5 +1,6 @@
 // src/services/errorService.ts
 import { logEvent } from '../firebase/analytics';
+import { analytics } from '../firebase/config';
 
 export interface AppError {
   code: string;
@@ -146,10 +147,8 @@ export const handleError = async (
   options: ErrorHandlerOptions = {}
 ): Promise<AppError> => {
   const {
-    showToast = true,
     logToConsole = true,
     logToAnalytics = true,
-    fallbackMessage = 'Ocorreu um erro inesperado',
     context
   } = options;
 
@@ -167,7 +166,7 @@ export const handleError = async (
   // Log no Analytics se habilitado
   if (logToAnalytics) {
     try {
-      await logEvent('error_occurred', {
+      await logEvent(analytics, 'error_occurred', {
         error_code: appError.code,
         error_message: appError.message,
         context: appError.context,
