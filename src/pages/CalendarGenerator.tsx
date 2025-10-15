@@ -9,8 +9,8 @@ import { getNationalHolidays, getCustomHolidaysForOrg, addCustomHoliday, deleteC
 import type { CustomHoliday } from '../services/holidayService';
 import CalendarView from '../components/CalendarView';
 import { logCalendarGenerated, logPdfExport } from '../firebase/analytics';
-import { ArrowLeft, ArrowRight, PartyPopper, Building, Users, CalendarDays, Eye } from 'lucide-react';
-import { exportCalendarToPDF, savePDF } from '../utils/pdfExport';
+import { ArrowLeft, ArrowRight, PartyPopper, Building, Users, CalendarDays, Eye, Download } from 'lucide-react';
+import { exportCalendarToPDF, savePDF, exportCollaboratorPDF } from '../utils/pdfExport';
 
 // Interfaces
 interface Day {
@@ -52,6 +52,7 @@ const CalendarGenerator = () => {
   const [loadingHolidays, setLoadingHolidays] = useState(false);
   const [generatedCalendar, setGeneratedCalendar] = useState<Day[]>([]);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingCollaboratorPdf, setIsExportingCollaboratorPdf] = useState<Record<string, boolean>>({});
 
 
   // Fetch holidays when year changes
@@ -280,6 +281,28 @@ const CalendarGenerator = () => {
     }
   };
 
+  const handleExportCollaboratorPdf = async (collaboratorName: string) => {
+    if (!currentUserOrg || generatedCalendar.length === 0) return;
+
+    setIsExportingCollaboratorPdf(prev => ({ ...prev, [collaboratorName]: true }));
+    try {
+      const doc = await exportCollaboratorPDF(collaboratorName, generatedCalendar, {
+        year,
+        month,
+        companyName,
+        companyLogo: logoUrl,
+        primaryColor,
+        secondaryColor,
+      });
+      savePDF(doc, `calendario-${collaboratorName.toLowerCase().replace(/\s+/g, '-')}-${month + 1}-${year}.pdf`);
+      logPdfExport('individual', currentUserOrg.orgId);
+    } catch (error) {
+      console.error(`Failed to export PDF for ${collaboratorName}:`, error);
+    } finally {
+      setIsExportingCollaboratorPdf(prev => ({ ...prev, [collaboratorName]: false }));
+    }
+  };
+
   const nextStep = () => setStep(s => Math.min(s + 1, steps.length));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
@@ -447,7 +470,21 @@ const CalendarGenerator = () => {
                 <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                     {plantonistas.map((plantonista) => (
                     <div key={plantonista.id} className="p-4 border dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                        <div className="flex justify-between items-center"><p className="font-semibold">{plantonista.name}</p><button type="button" onClick={() => handleRemovePlantonista(plantonista.id)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remover</button></div>
+                        <div className="flex justify-between items-center">
+                            <p className="font-semibold">{plantonista.name}</p>
+                            <div className="flex items-center space-x-4">
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportCollaboratorPdf(plantonista.name)}
+                                    disabled={isExportingCollaboratorPdf[plantonista.name] || generatedCalendar.length === 0}
+                                    className="text-blue-600 hover:text-blue-800 text-sm font-semibold flex items-center space-x-1 disabled:opacity-50"
+                                >
+                                    <Download size={14} />
+                                    <span>{isExportingCollaboratorPdf[plantonista.name] ? 'Exportando...' : 'Exportar PDF'}</span>
+                                </button>
+                                <button type="button" onClick={() => handleRemovePlantonista(plantonista.id)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remover</button>
+                            </div>
+                        </div>
                         <div className="mt-4 space-y-2"><h4 className="text-sm font-medium text-gray-600 dark:text-gray-300">Períodos de Férias:</h4>
                         {plantonista.vacations.map((vacation) => (
                             <div key={vacation.id} className="flex items-center space-x-2"><input type="date" value={vacation.startDate} onChange={(e) => handleVacationChange(plantonista.id, vacation.id, 'startDate', e.target.value)} className="px-2 py-1 border dark:bg-gray-600 dark:border-gray-500 rounded-lg text-sm" /><span>até</span><input type="date" value={vacation.endDate} onChange={(e) => handleVacationChange(plantonista.id, vacation.id, 'endDate', e.target.value)} className="px-2 py-1 border dark:bg-gray-600 dark:border-gray-500 rounded-lg text-sm" /><button type="button" onClick={() => handleRemoveVacation(plantonista.id, vacation.id)} className="text-red-500 text-xs">&#x2715;</button></div>

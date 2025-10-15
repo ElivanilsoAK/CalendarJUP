@@ -165,3 +165,88 @@ export const exportCalendarToPDF = async (
 export const savePDF = (doc: jsPDF, filename: string) => {
   doc.save(filename);
 };
+
+/**
+ * Generates a PDF calendar for a single collaborator.
+ */
+export const exportCollaboratorPDF = async (
+  collaboratorName: string,
+  days: Day[],
+  options: ExportOptions
+) => {
+  const doc = new jsPDF({ orientation: 'portrait' });
+  const { year, month, companyName, companyLogo, primaryColor, secondaryColor } = options;
+
+  const headStyles = {
+    fillColor: hexToRgb(primaryColor),
+    textColor: [255, 255, 255],
+    fontStyle: 'bold',
+  };
+
+  // 1. Add Header
+  doc.setFontSize(20);
+  doc.setTextColor(primaryColor);
+  doc.text(companyName, doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+
+  doc.setFontSize(16);
+  doc.setTextColor(secondaryColor);
+  const monthName = format(new Date(year, month), 'MMMM', { locale: ptBR });
+  doc.text(
+    `Plantões de ${collaboratorName} - ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`,
+    doc.internal.pageSize.getWidth() / 2,
+    30,
+    { align: 'center' }
+  );
+
+  // 2. Add Logo
+  if (companyLogo) {
+    try {
+        const response = await fetch(companyLogo);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        await new Promise<void>((resolve, reject) => {
+            reader.onload = () => {
+                const imgData = reader.result as string;
+                const img = new Image();
+                img.src = imgData;
+                img.onload = () => {
+                    const imgWidth = 25;
+                    const imgHeight = (img.height * imgWidth) / img.width;
+                    doc.addImage(imgData, 'PNG', 15, 12, imgWidth, imgHeight);
+                    resolve();
+                }
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.error("Error loading company logo for PDF:", e);
+    }
+  }
+
+  // 3. Prepare Data
+  const collaboratorShifts = days.filter(
+    (day) => day.plantonista && day.plantonista.name === collaboratorName
+  );
+
+  const body = collaboratorShifts.map((day) => [
+    format(day.date, 'dd/MM/yyyy', { locale: ptBR }),
+    format(day.date, 'EEEE', { locale: ptBR }),
+  ]);
+
+  // 4. Generate Table
+  if (body.length > 0) {
+    doc.autoTable({
+      head: [['Data', 'Dia da Semana']],
+      body: body,
+      startY: 50,
+      theme: 'grid',
+      headStyles: headStyles,
+    });
+  } else {
+    doc.setFontSize(12);
+    doc.text('Nenhum plantão encontrado para este colaborador no período.', 14, 60);
+  }
+
+  return doc;
+};
