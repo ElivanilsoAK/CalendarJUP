@@ -29,12 +29,14 @@ import {
 import { logLoginSuccess, logOrganizationCreated } from '../firebase/analytics';
 import { useErrorHandler } from '../hooks/useErrorHandler';
 // import { ERROR_CODES } from '../services/errorService';
+import { type UserRole, USER_ROLES } from '../types/roles';
+import { generateOrganizationCode, findOrganizationIdByCode } from '../services/organizationService';
 
 interface UserOrgInfo {
   orgId: string;
   name: string;
   code: string;
-  role: string;
+  role: UserRole;
 }
 
 interface AuthContextType {
@@ -71,24 +73,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
   const [userOrgs, setUserOrgs] = useState<UserOrgInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const generateOrgCode = (length = 6) => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  }
-
-  const getOrgIdFromCode = async (orgCode: string): Promise<string | null> => {
-    const orgsRef = collection(db, 'organizations');
-    const q = query(orgsRef, where("code", "==", orgCode.toUpperCase()));
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) {
-      return null;
-    }
-    return querySnapshot.docs[0].id;
-  }
+  // Código de organização centralizado em services/organizationService
 
   const signup = async (email: string, pass: string, name: string, orgCode?: string) => {
     try {
@@ -105,25 +90,25 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       });
 
       let orgIdToJoin: string;
-      let role = 'user';
+      let role: UserRole = USER_ROLES.MEMBER;
 
       if (orgCode) {
-        const existingOrgId = await getOrgIdFromCode(orgCode);
+        const existingOrgId = await findOrganizationIdByCode(orgCode);
         if (!existingOrgId) {
           throw new Error("Organização não encontrada com o código fornecido.");
         }
         orgIdToJoin = existingOrgId;
       } else {
         const newOrgRef = doc(collection(db, 'organizations'));
-        const newCode = generateOrgCode();
+        const newCode = generateOrganizationCode();
         await setDoc(newOrgRef, {
           name: `Organização de ${name}`,
           owner: user.uid,
-          code: newCode,
+          inviteCode: newCode,
           createdAt: serverTimestamp(),
         });
         orgIdToJoin = newOrgRef.id;
-        role = 'admin'; // First user is admin
+        role = USER_ROLES.OWNER; // criador é owner
         logOrganizationCreated(orgIdToJoin);
       }
 
@@ -176,25 +161,25 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
       });
 
       let orgIdToJoin: string;
-      let role = 'user';
+      let role: UserRole = USER_ROLES.MEMBER;
 
       if (orgCode) {
-        const existingOrgId = await getOrgIdFromCode(orgCode);
+        const existingOrgId = await findOrganizationIdByCode(orgCode);
         if (!existingOrgId) {
           throw new Error("Organização não encontrada. Verifique o código e tente novamente.");
         }
         orgIdToJoin = existingOrgId;
       } else {
         const newOrgRef = doc(collection(db, 'organizations'));
-        const newCode = generateOrgCode();
+        const newCode = generateOrganizationCode();
         await setDoc(newOrgRef, {
             name: `${user.displayName || 'Usuário'}'s Organization`,
             owner: user.uid,
-            code: newCode,
+            inviteCode: newCode,
             createdAt: serverTimestamp(),
         });
         orgIdToJoin = newOrgRef.id;
-        role = 'admin';
+        role = USER_ROLES.OWNER;
         logOrganizationCreated(orgIdToJoin);
       }
       
@@ -439,7 +424,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
                   orgs.push({
                     orgId: orgDoc.id,
                     name: orgData.name,
-                    code: orgData.code,
+                    code: orgData.inviteCode || orgData.code,
                     role: memberDoc.data().role
                   });
                 }
@@ -466,7 +451,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
               orgs.push({
                 orgId: orgDoc.id,
                 name: orgData.name,
-                code: orgData.code,
+                code: orgData.inviteCode || orgData.code,
                 role: memberDoc.data().role
               });
             }

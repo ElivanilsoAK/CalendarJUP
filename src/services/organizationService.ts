@@ -5,7 +5,7 @@ import { doc, updateDoc, getDoc, collection, query, where, getDocs, setDoc } fro
 /**
  * Generates a random 6-character alphanumeric string.
  */
-const generateInviteCode = (): string => {
+export const generateOrganizationCode = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
   for (let i = 0; i < 6; i++) {
@@ -22,7 +22,7 @@ const generateInviteCode = (): string => {
  * @returns The newly generated invite code.
  */
 export const generateAndSaveInviteCode = async (orgId: string): Promise<string> => {
-  const newCode = generateInviteCode();
+  const newCode = generateOrganizationCode();
   const orgRef = doc(db, 'organizations', orgId);
   await updateDoc(orgRef, {
     inviteCode: newCode,
@@ -65,6 +65,23 @@ export const findOrganizationByInviteCode = async (code: string): Promise<{ id: 
 };
 
 /**
+ * Finds an organization id by either inviteCode or legacy code field.
+ */
+export const findOrganizationIdByCode = async (code: string): Promise<string | null> => {
+  const orgsRef = collection(db, 'organizations');
+  // Try inviteCode first
+  let q = query(orgsRef, where('inviteCode', '==', code.toUpperCase()));
+  let snapshot = await getDocs(q);
+  if (!snapshot.empty) return snapshot.docs[0].id;
+
+  // Fallback to legacy 'code'
+  q = query(orgsRef, where('code', '==', code.toUpperCase()));
+  snapshot = await getDocs(q);
+  if (!snapshot.empty) return snapshot.docs[0].id;
+  return null;
+};
+
+/**
  * Creates a new organization document in Firestore.
  *
  * @param ownerId The UID of the user who will own the organization.
@@ -73,7 +90,7 @@ export const findOrganizationByInviteCode = async (code: string): Promise<{ id: 
  */
 export const createOrganization = async (ownerId: string, orgName: string): Promise<string> => {
     const newOrgRef = doc(collection(db, 'organizations'));
-    const newCode = generateInviteCode();
+    const newCode = generateOrganizationCode();
 
     await setDoc(newOrgRef, {
       name: orgName,
